@@ -1,10 +1,13 @@
 import { ArrowRight, ArrowUpRight, Clock3, Wind } from 'lucide-react';
+import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { loadSetup } from './api';
 import DecisionReplay, { ErrorPanel, LoadingPanel, ProductGuide } from './DecisionReplay';
 import { useResource } from './useResource';
+import SecondaryAnalysis, { analysisViews } from './AnalysisViews';
+import type { AnalysisView } from './AnalysisViews';
 
 const setupLoader = (_key: string, signal: AbortSignal) => loadSetup(signal);
 
@@ -42,11 +45,15 @@ function WindIllustration() {
           <p className="mb-2 text-[10px] font-semibold tracking-[.18em] text-primary">
             LOOK BACK. LEARN. PLAN.
           </p>
-          <p className="text-3xl font-bold tracking-[-.04em] text-primary">What actually happened</p>
+          <p className="text-3xl font-bold tracking-[-.04em] text-primary">
+            What actually happened
+          </p>
           <p className="mt-2 text-xs text-neutral-600">Reported wind generation</p>
         </div>
         <div className="px-6 py-5">
-          <p className="text-xl font-medium tracking-tight text-neutral-500">How far apart they were</p>
+          <p className="text-xl font-medium tracking-tight text-neutral-500">
+            How far apart they were
+          </p>
           <p className="mt-1 text-xs text-neutral-500">Measured differences in MW</p>
         </div>
       </div>
@@ -55,6 +62,9 @@ function WindIllustration() {
 }
 
 export default function App() {
+  const [view, setView] = useState<AnalysisView>('replay');
+  const [historyTarget, setHistoryTarget] = useState<string | null>(null);
+  const activeView = analysisViews.find((item) => item.value === view)!;
   const { resource, reload } = useResource('setup', setupLoader);
   const available =
     resource.state === 'ready' &&
@@ -71,17 +81,25 @@ export default function App() {
         <header className="border-b border-neutral-200/70 bg-white/95">
           <div className="mx-auto flex h-20 max-w-[1320px] items-center justify-between gap-4 px-5 sm:px-8 lg:px-10">
             <Brand />
-            <nav aria-label="Analytical views" className="hidden items-center gap-8 text-sm lg:flex">
-              <a
-                href="#replay-workspace"
-                aria-current="page"
-                className="font-medium text-primary underline-offset-8 hover:underline"
-              >
-                Decision replay
-              </a>
-              <a href="#data-sources" className="text-neutral-600 hover:text-primary">
-                Sources & assumptions
-              </a>
+            <nav
+              aria-label="Analytical views"
+              className="hidden items-center gap-6 text-xs lg:flex"
+            >
+              {analysisViews.map((item) => (
+                <a
+                  key={item.value}
+                  href="#replay-workspace"
+                  onClick={() => setView(item.value)}
+                  aria-current={view === item.value ? 'page' : undefined}
+                  className={
+                    view === item.value
+                      ? 'font-medium text-primary underline-offset-8 hover:underline'
+                      : 'text-neutral-600 hover:text-primary'
+                  }
+                >
+                  {item.label}
+                </a>
+              ))}
               <a href="#how-it-works" className="text-neutral-600 hover:text-primary">
                 How WindSight helps
               </a>
@@ -119,8 +137,11 @@ export default function App() {
                 assumptions.
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-3">
-                <Button asChild className="h-12 rounded-none px-5 shadow-[0_5px_14px_-7px_#14893770]">
-                  <a href="#replay-workspace">
+                <Button
+                  asChild
+                  className="h-12 rounded-none px-5 shadow-[0_5px_14px_-7px_#14893770]"
+                >
+                  <a href="#replay-workspace" onClick={() => setView('replay')}>
                     Review a buying day
                     <ArrowRight aria-hidden="true" />
                   </a>
@@ -145,7 +166,7 @@ export default function App() {
           </section>
           <section
             id="replay-workspace"
-            aria-label="Decision Replay"
+            aria-label={view === 'replay' ? 'Decision Replay' : activeView.label}
             tabIndex={-1}
             className="pt-10 scroll-mt-6 outline-none sm:pt-12"
           >
@@ -155,15 +176,29 @@ export default function App() {
                   YOUR DECISION, RECONSTRUCTED
                 </p>
                 <h2 className="text-2xl font-bold tracking-[-.035em] sm:text-3xl">
-                  Replay a buying day
+                  {activeView.heading}
                 </h2>
-                <p className="mt-1.5 text-sm text-muted-foreground">
-                  Start with a date. We’ll show you what was known and what followed.
-                </p>
+                <p className="mt-1.5 text-sm text-muted-foreground">{activeView.description}</p>
               </div>
               <Badge variant="secondary" className="rounded-md px-2.5 py-1 font-normal">
                 01–31 Jan 2026
               </Badge>
+            </div>
+            <div
+              className="mb-5 flex flex-wrap gap-2"
+              role="group"
+              aria-label="Choose an analytical view"
+            >
+              {analysisViews.map((item) => (
+                <Button
+                  key={item.value}
+                  variant={view === item.value ? 'default' : 'outline'}
+                  aria-pressed={view === item.value}
+                  onClick={() => setView(item.value)}
+                >
+                  {item.label}
+                </Button>
+              ))}
             </div>
             {resource.state === 'loading' && <LoadingPanel message="Checking API connection…" />}
             {resource.state === 'error' && (
@@ -203,7 +238,22 @@ export default function App() {
                 </div>
               </section>
             )}
-            {available && <DecisionReplay />}
+            {available &&
+              (view === 'replay' ? (
+                <DecisionReplay />
+              ) : (
+                <SecondaryAnalysis
+                  view={view}
+                  initialTarget={historyTarget}
+                  onInspect={(target) => {
+                    setHistoryTarget(target);
+                    setView('evolution');
+                    const workspace = document.getElementById('replay-workspace');
+                    workspace?.scrollIntoView?.({ block: 'start' });
+                    workspace?.focus({ preventScroll: true });
+                  }}
+                />
+              ))}
           </section>
           <ProductGuide />
           <footer className="mt-9 flex flex-col justify-between gap-3 border-t py-6 text-[11px] leading-relaxed text-neutral-500 sm:flex-row">

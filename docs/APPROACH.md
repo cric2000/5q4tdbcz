@@ -32,7 +32,7 @@ I also recognize a comparison limitation: WINDFOR and FUELHH can represent diffe
 
 ## Application foundation
 
-I chose React/TypeScript/Vite and FastAPI with Pydantic settings. The API exposes service health, snapshot status and pilot configuration, with no data ingestion at startup. Configuration is returned by the API so the React page does not duplicate the deadline. The application distinguishes ready, missing, incomplete and invalid snapshots. Ready and valid incomplete snapshots open Decision Replay; the two secondary screens remain labeled as coming next. Status text is derived during React rendering rather than synchronized through another Effect.
+I chose React/TypeScript/Vite and FastAPI with Pydantic settings. The API exposes service health, snapshot status and pilot configuration, with no data ingestion at startup. Configuration is returned by the API so the React page does not duplicate the deadline. The application distinguishes ready, missing, incomplete and invalid snapshots. Ready and valid incomplete snapshots open the analytical workspace with Decision Replay, Accuracy & Risk and Forecast Evolution. Status text is derived during React rendering rather than synchronized through another Effect.
 
 The API root serves a simple welcome page with a link to the interactive endpoint documentation at `/docs`.
 
@@ -78,7 +78,7 @@ On the real snapshot, all 744 hours match at the assumed 09:50 GMT cutoff. The o
 
 For the January 14 decision and January 15 midnight target, the selected 09:30 publication is 15,828 MW. The actual half-hours are 14,602 and 14,311 MW. Their mean is **14,456.5 MW**, making the signed error **+1,371.5 MW**. The first half-hour alone would give a different result and is not the canonical hourly comparison.
 
-These figures compare Elexon series that may represent different wind populations. I do not describe the positive bias as proven intrinsic model bias, a utility procurement shortfall or a financial loss. Replay presentation is implemented; the secondary dashboard screens and production data packaging remain pending.
+These figures compare Elexon series that may represent different wind populations. I do not describe the positive bias as proven intrinsic model bias, a utility procurement shortfall or a financial loss. All three analytical views are implemented; production data packaging remains pending.
 
 ## Decision Replay interface
 
@@ -96,12 +96,24 @@ I use shadcn/ui components generated from the official registry, backed by Radix
 
 The first screen states the use case and the two core benefits: the latest forecast available at the deadline and measured historical differences. A primary anchor leads to the date controls. Desktop places the chart beside its interpretation; mobile stacks the numbered steps and fits the full day in one plot. The business-context accordion starts open, and deeper evidence remains optional. Statistics and data requests retain their existing definitions and cancellation safeguards. Dependencies are pinned, and Docker was rebuilt once to include them.
 
+## Accuracy and publication-history interfaces
+
+Accuracy & Risk requests the aggregate and daily APIs together for an inclusive buying-date range. Draft inputs become an applied range only after validation. The result confirms its actual range, and new requests hide the old range’s metrics while pending. Both API references must match each other and the loaded metadata. The client checks daily D→D+1 mapping, coverage, histogram counts and boundaries, and outlier ordering. The server remains responsible for analytical calculations.
+
+The view leads with average gap, average direction and P90, each explained in everyday language. It shows direction frequencies, a daily MAE trend, signed-error distribution and the ten largest misses. Missing days break the trend; zero remains valid. Tables expose daily coverage and distribution intervals. An outlier opens the exact delivery hour in Forecast Evolution and focuses the analytical workspace.
+
+Forecast Evolution uses delivery-day and UTC-hour controls with January 2–February 1 boundaries. Publication positions use actual elapsed timestamps, rather than array indices. Steps connect published values without inventing intermediate forecasts. A vertical marker uses the configured buying deadline, and later publications are shaded. The domain always contains the deadline, including histories entirely before or after it. A filled point identifies the latest eligible publication; eligibility includes equality. A solid horizontal actual line is explicitly retrospective.
+
+Publication selection is local event state and does not refetch. Pointer, arrow/Home/End keys, previous/next buttons and the full table share the same inspector. The inspector distinguishes changed values, unchanged republications and the first acquired value. The client rejects malformed chronological ordering, inaccurate eligibility/selection flags or comparison values inconsistent with the selected publication. Changing a delivery hour aborts the old request, hides old results and resets selection to the chosen as-of publication. Empty history, no eligible forecast, incomplete actuals and zeros have distinct states.
+
+The interface keeps the green/charcoal theme and existing shadcn/Tailwind components without another chart or routing dependency. These views describe historical wind assumptions; they do not claim calibrated future uncertainty, model-run timing, purchase quantities or financial savings.
+
 ## Verification
 
-Current verification produced **112 passing backend tests and 32 passing frontend tests**, with no failures or skips. Backend tests cover ingestion, mathematical fixtures, before/equal/after cutoff, changed configuration, exact targets, incomplete actuals, zero generation, January 31→February 1, empty samples, percentile interpolation, typed API contracts, structured errors, read-only access and SQLite worker handoffs. Frontend tests cover date/input/button interactions, coordinated results, missing/empty/zero states, discontinuous chart paths, keyboard/table selection, setup states, invalid contracts, reference mismatches, request cancellation, late responses, timeout and retry.
+Current verification produced **112 passing backend tests and 50 passing frontend tests**, with no failures or skips. Backend tests cover ingestion, mathematical fixtures, before/equal/after cutoff, changed configuration, exact targets, incomplete actuals, zero generation, January 31→February 1, empty samples, percentile interpolation, typed API contracts, structured errors, read-only access and SQLite worker handoffs. Frontend tests cover date/input/button interactions, inclusive range filters, coordinated results, histogram and outlier navigation, actual chronological publication spacing, deadline equality, unchanged republications, missing/empty/zero states, discontinuous chart paths, keyboard/table selection, setup states, invalid contracts, reference mismatches, request cancellation, late responses, timeout and retry.
 
 Ruff checks, TypeScript checking, the production build, Docker startup and the Vite/Nginx API proxies passed. The running page was checked at desktop and narrow-screen widths. One development test dependency emits a deprecation warning about its `httpx` integration.
 
 The Docker development reload workflow was checked with temporary source edits that were then restored. A React text change appeared in the open browser through hot module replacement without a page refresh. A Python change appeared in the API response through Uvicorn reload while the backend container identity remained unchanged.
 
-The live Replay was verified against the Elexon-derived snapshot through the existing Docker/Vite proxy at desktop and mobile widths. The next technical work is the secondary Accuracy & Risk and Forecast Evolution screens; their analytical APIs already exist.
+All three views were verified against the Elexon-derived snapshot through the existing Docker/Vite proxy at desktop and mobile widths. The next checkpoint is CI, production snapshot packaging and deployment verification.

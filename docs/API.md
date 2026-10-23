@@ -477,13 +477,13 @@ Analytical routes document HTTP 422 for invalid requests and HTTP 503 for unavai
 
 Missing analytical data within a valid snapshot is a successful HTTP 200 response with null fields and explicit reasons. It is different from an unusable snapshot, which returns 503. The application does not create or ingest a snapshot in response to a failed request. Unrecognized routes use the framework's standard 404 response, not this analytical error envelope.
 
-## Suggested frontend request flow
+## Implemented frontend request flow
 
 1. Application setup: fetch `/health` and `/config` for connectivity, setup status and the assumption label.
-2. Decision Replay workspace: fetch `/metadata` for common provenance and methodology.
+2. Selected analytical workspace: fetch `/metadata` for common provenance and methodology.
 3. Decision Replay: fetch `/decisions/{decision_date}` when the selected buying day changes.
-4. Planned Accuracy view: fetch `/accuracy` and `/accuracy/daily` with the same decision-date filters.
-5. Planned Evolution view: fetch `/evolution?target_time=...` for the chosen delivery hour.
-6. Data diagnostics API: fetch `/data-quality` when showing coverage detail.
+4. Accuracy & Risk: fetch `/accuracy` and `/accuracy/daily` together with the same inclusive buying-date filters. Validate both references before showing either result.
+5. Forecast Evolution: fetch `/evolution?target_time=...` for the chosen delivery hour, including when opening an accuracy outlier. Publication inspection is local state and does not fetch again.
+6. Data diagnostics: `/data-quality` remains available through the API; a dedicated diagnostics screen is not implemented.
 
 Keep units, assumption disclosure and source-population limitations available in the UI even though they no longer repeat in each analytical result. Check result `meta` against cached metadata before combining responses.

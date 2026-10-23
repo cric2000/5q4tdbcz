@@ -1,6 +1,6 @@
 # WindSight — Day-ahead wind intelligence
 
-**Current status: Decision Replay implemented and verified.** The React dashboard reconstructs decision-time forecasts, compares them with next-day actuals and displays daily accuracy using the FastAPI analytical services and reproducible Elexon-to-SQLite snapshot. Accuracy & Risk and Forecast Evolution screens remain planned.
+**Current status: Decision Replay, Accuracy & Risk and Forecast Evolution implemented and verified locally.** The React dashboard reconstructs decision-time forecasts, compares them with next-day actuals, reviews accuracy across buying days and traces publication history using the FastAPI analytical services and reproducible Elexon-to-SQLite snapshot.
 
 This pilot helps a GB electricity buyer reconstruct the latest wind forecast available before a day-ahead purchasing decision and evaluate its historical accuracy. Calculations use only national Elexon WINDFOR forecasts and FUELHH WIND outturn. These series cannot determine purchase quantities or trading profit.
 
@@ -170,9 +170,28 @@ Open the [application](http://localhost:5173) after preparing the snapshot. The 
 - Missing readings leave gaps; zero remains a valid value. Coverage stays visible, and a day with no matched pairs shows unavailable metrics with all expected rows retained.
 - “Where the numbers come from” explains the forecast and actual sources, with source links, the configured assumption, snapshot provenance and comparison limitations.
 
-The browser validates the API contracts and checks the result's snapshot/cutoff against loaded metadata. It cancels requests when switching dates, hides the previous day's results while loading, ignores late responses and provides retry actions for errors/timeouts. Valid incomplete snapshots can be explored; missing/invalid snapshots show a setup message. Accuracy & Risk and Forecast Evolution are labeled as coming next.
+The browser validates the API contracts and checks the result's snapshot/cutoff against loaded metadata. It cancels requests when switching dates, hides the previous day's results while loading, ignores late responses and provides retry actions for errors/timeouts. Valid incomplete snapshots can be explored; missing/invalid snapshots show a setup message. Use the view buttons or desktop navigation to open Accuracy & Risk and Forecast Evolution.
 
 To check the verified example, select **14 January 2026** and inspect **00:00 UTC** on January 15. To check the scope boundary, select **31 January 2026**: delivery must read **1 February 2026**, with 24 hours and the next-day button disabled.
+
+## Review accuracy across buying days
+
+Choose **Accuracy & risk**, select the first and last buying days, then select **Update analysis**. The range includes both dates; January 31 includes delivery on February 1.
+
+- Average gap (MAE) describes the size of hourly differences. Bias describes their average direction; opposite signs can cancel out.
+- P90 describes larger observed gap sizes, with a visible explanation that it is not a guaranteed future error range.
+- Direction counts show how often the forecast was high, low or exactly matched. Percentages use matched hours; coverage uses all expected hours.
+- The daily trend uses chronological buying dates and leaves gaps for days without valid comparisons. The distribution groups signed hourly errors by interval, with zero separating low and high forecasts.
+- **Hours worth a closer look** lists the ten largest misses. **See history** opens the exact delivery hour in Forecast Evolution.
+- Expand daily readings for dates, coverage and measures, or distribution readings for interval boundaries and counts. The range metrics come directly from the API across all matched hours, rather than averaging daily averages.
+
+## Follow a forecast through its publications
+
+Choose **Forecast evolution**, then a delivery day and hour. Buying day and deadline are on the previous day. The chart places publications by actual elapsed time and uses steps between published values. The filled green point identifies the latest forecast available at or before the deadline; later publications are shaded and excluded from that original decision. The solid reported-power reference is retrospective.
+
+Select a publication, use the previous/next controls, or use arrow/Home/End keys on chart points. The inspector and optional full history table identify the publication time, value, deadline eligibility and whether the value changed from the previous stored publication. An unchanged republication does not establish a new forecasting model run. This is the acquired snapshot’s history, not a claim that every upstream revision is present.
+
+The earliest delivery hour is January 2 at 00:00 UTC and the latest is February 1 at 23:00 UTC. In this historical period, UTC matches UK local time (GMT). Empty history, later-only forecasts, incomplete actual readings and true zero values remain distinct.
 
 ## Interface and design system
 
@@ -238,7 +257,7 @@ npm run typecheck
 npm run build
 ```
 
-Current verification: **112 backend tests and 32 frontend tests passed**, with no failures or skips. Ruff, TypeScript checking and the frontend production build passed. The live Decision Replay was checked through the Docker/Vite proxy at desktop and mobile widths, including the January 14 example and January 31→February 1 boundary. The backend test client emits one dependency deprecation warning for its `httpx` integration. CI and deployed end-to-end verification remain planned.
+Current verification: **112 backend tests and 50 frontend tests passed**, with no failures or skips. Ruff, TypeScript checking and the frontend production build passed. All three live views were checked through the Docker/Vite proxy at desktop and mobile widths. Checks include the January 14 replay example, full-January accuracy, an outlier-to-history link and the January 31→February 1 boundary. The backend test client emits one dependency deprecation warning for its `httpx` integration. CI and deployed end-to-end verification remain planned.
 
 ## Implementation status
 
@@ -249,7 +268,7 @@ Current verification: **112 backend tests and 32 frontend tests passed**, with n
 | Live ingestion / SQLite / quality report | Implemented; full decision-window coverage verified |
 | As-of selection, hourly averaging, metrics and typed APIs | Implemented; fixtures and real-data calculations verified |
 | Decision Replay | Implemented; real API chart, daily metrics, evidence table and request states verified |
-| Accuracy & Risk / Forecast Evolution screens | Planned; underlying APIs implemented |
+| Accuracy & Risk / Forecast Evolution screens | Implemented; range metrics, distribution, outlier links and publication timeline verified locally |
 | CI and public hosting | Planned; no public application URL yet |
 
 ## AI assistance

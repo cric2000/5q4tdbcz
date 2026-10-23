@@ -810,7 +810,7 @@ function Evidence({
   );
 }
 
-function Methodology({ metadata }: { metadata: Metadata }) {
+export function Methodology({ metadata }: { metadata: Metadata }) {
   return (
     <section id="data-sources" className="mt-8 scroll-mt-6">
       <div className="mb-4 flex items-center gap-2">

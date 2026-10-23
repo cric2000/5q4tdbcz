@@ -182,3 +182,26 @@
 .compact-chart .actual-line {
   stroke-width: 3.5;
 }
+
+.analysis-chart {
+  display: block;
+  width: 100%;
+}
+.error-neutral {
+  fill: #8c9891;
+}
+.cutoff-line {
+  stroke: #6b6b6b;
+  stroke-width: 1.7;
+  stroke-dasharray: 5 4;
+}
+.publication-point {
+  cursor: pointer;
+}
+.publication-point:focus-visible {
+  outline: none;
+}
+.publication-point:focus-visible .publication-hit {
+  stroke: var(--primary);
+  stroke-width: 2;
+}
