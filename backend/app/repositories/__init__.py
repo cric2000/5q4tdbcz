@@ -1,1 +1,1 @@
-"""SQLite access will be implemented with ingestion in Phase 1."""
+"""SQLite snapshot publishing and read-only access."""

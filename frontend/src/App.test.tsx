@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import App from './App';
 
-const health = { status: 'ok', service: 'windsight', phase: 'setup', data_status: 'not_ingested' };
+const health = { status: 'ok', service: 'windsight', phase: 'ingestion', data_status: 'not_ingested' };
 const config = {
   decision_cutoff_gmt: '10:15',
   cutoff_reference_url: 'https://support.nordpoolgroup.com/reference',
@@ -18,6 +18,18 @@ function successfulFetch() {
 }
 
 describe('setup landing page', () => {
+  it.each([
+    ['snapshot_ready', 'The historical snapshot is ready.'],
+    ['snapshot_incomplete', 'The historical snapshot has incomplete coverage.'],
+    ['snapshot_invalid', 'The historical snapshot could not be validated.'],
+  ])('displays the %s state without claiming analytical views are implemented', async (status, message) => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string) => Promise.resolve({
+      ok: true, json: async () => path.endsWith('/health') ? { ...health, data_status: status } : config,
+    })));
+    render(<App />);
+    expect(await screen.findByText('API connected')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(message);
+  });
   it('shows the configured assumption and clearly discloses un-ingested data', async () => {
     vi.stubGlobal('fetch', successfulFetch());
     render(<App />);

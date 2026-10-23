@@ -1,3 +1,6 @@
+import json
+import sqlite3
+
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -6,16 +9,48 @@ from app.core.config import Settings
 from app.main import create_app
 
 
-def test_health_reports_liveness_without_claiming_data_is_ready():
-    with TestClient(create_app(Settings())) as client:
+def test_health_reports_liveness_without_claiming_data_is_ready(tmp_path):
+    with TestClient(create_app(Settings(database_path=tmp_path / "missing.sqlite3"))) as client:
         response = client.get("/api/v1/health")
     assert response.status_code == 200
     assert response.json() == {
         "status": "ok",
         "service": "windsight",
-        "phase": "setup",
+        "phase": "ingestion",
         "data_status": "not_ingested",
     }
+
+
+@pytest.mark.parametrize(
+    "complete, status",
+    [
+        (True, "snapshot_ready"),
+        (False, "snapshot_incomplete"),
+        ("yes", "snapshot_invalid"),
+    ],
+)
+def test_health_reads_snapshot_status_without_running_ingestion(tmp_path, complete, status):
+    path = tmp_path / "snapshot.sqlite3"
+    with sqlite3.connect(path) as database:
+        database.execute("PRAGMA user_version=1")
+        database.execute("CREATE TABLE metadata (key TEXT, value TEXT)")
+        database.execute(
+            "INSERT INTO metadata VALUES ('quality_report', ?)",
+            (json.dumps({"complete": complete}),),
+        )
+    with TestClient(create_app(Settings(database_path=path))) as client:
+        response = client.get("/api/v1/health")
+    assert response.status_code == 200
+    assert response.json()["data_status"] == status
+
+
+def test_invalid_snapshot_does_not_break_liveness(tmp_path):
+    path = tmp_path / "snapshot.sqlite3"
+    path.write_text("not a database")
+    with TestClient(create_app(Settings(database_path=path))) as client:
+        response = client.get("/api/v1/health")
+    assert response.status_code == 200
+    assert response.json()["data_status"] == "snapshot_invalid"
 
 
 def test_config_reflects_environment_and_january_decision_scope(monkeypatch):

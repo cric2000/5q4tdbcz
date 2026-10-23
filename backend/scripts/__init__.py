@@ -1,1 +1,1 @@
-"""Reproducible Elexon ingestion is planned for Phase 1."""
+"""Command-line Elexon ingestion and read-only snapshot inspection."""

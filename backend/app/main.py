@@ -11,7 +11,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application = FastAPI(
         title="WindSight API",
         version="0.1.0",
-        description="Historical wind pilot. Phase 0: service health and pilot configuration only.",
+        description="Historical wind pilot: health, snapshot status and pilot configuration.",
     )
     application.state.settings = config
     application.add_middleware(

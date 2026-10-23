@@ -7,8 +7,10 @@ from pydantic import BaseModel
 class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
     service: Literal["windsight"] = "windsight"
-    phase: Literal["setup"] = "setup"
-    data_status: Literal["not_ingested"] = "not_ingested"
+    phase: Literal["ingestion"] = "ingestion"
+    data_status: Literal[
+        "not_ingested", "snapshot_ready", "snapshot_incomplete", "snapshot_invalid"
+    ] = "not_ingested"
 
 
 class PilotConfigResponse(BaseModel):

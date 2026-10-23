@@ -1,8 +1,8 @@
 export interface Health {
   status: 'ok';
   service: 'windsight';
-  phase: 'setup';
-  data_status: 'not_ingested';
+  phase: 'ingestion';
+  data_status: 'not_ingested' | 'snapshot_ready' | 'snapshot_incomplete' | 'snapshot_invalid';
 }
 
 export interface PilotConfig {
@@ -31,8 +31,10 @@ export async function loadSetup(signal: AbortSignal): Promise<SetupStatus> {
   if (!health || typeof health !== 'object'
     || !('status' in health) || health.status !== 'ok'
     || !('service' in health) || health.service !== 'windsight'
-    || !('phase' in health) || health.phase !== 'setup'
-    || !('data_status' in health) || health.data_status !== 'not_ingested'
+    || !('phase' in health) || health.phase !== 'ingestion'
+    || !('data_status' in health)
+    || typeof health.data_status !== 'string'
+    || !['not_ingested', 'snapshot_ready', 'snapshot_incomplete', 'snapshot_invalid'].includes(health.data_status)
     || !config || typeof config !== 'object'
     || !('decision_cutoff_gmt' in config) || typeof config.decision_cutoff_gmt !== 'string'
     || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(config.decision_cutoff_gmt)

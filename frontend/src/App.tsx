@@ -16,6 +16,12 @@ const views = [
 export default function App() {
   const [connection, setConnection] = useState<Connection>({ state: 'loading' });
   const [attempt, setAttempt] = useState(0);
+  const dataMessage = connection.state === 'ready' ? {
+    not_ingested: 'The application foundation is running. Historical data has not been ingested.',
+    snapshot_ready: 'The historical snapshot is ready. Analytical views are not yet available.',
+    snapshot_incomplete: 'The historical snapshot has incomplete coverage. Analytical views are not yet available.',
+    snapshot_invalid: 'The historical snapshot could not be validated. Rebuild it before analysis.',
+  }[connection.value.health.data_status] : '';
 
   useEffect(() => {
     const controller = new AbortController();
@@ -47,7 +53,7 @@ export default function App() {
             <p className="eyebrow">GREAT BRITAIN / JANUARY 2026</p>
             <h1 id="title">A clearer view of<br />tomorrow’s wind.</h1>
             <p className="intro">Understand what was forecast at decision time.<br className="desktop-break" /> Learn from what actually followed.</p>
-            <div className="setup-label"><span className="small-dot" aria-hidden="true" /> Phase 0 · Foundation ready</div>
+            <div className="setup-label"><span className="small-dot" aria-hidden="true" /> Historical research pilot</div>
           </div>
           <aside className="scope-card" aria-label="Pilot scope">
             <p className="eyebrow">THE HISTORICAL WINDOW</p>
@@ -63,7 +69,7 @@ export default function App() {
             <span className={`status-light ${connection.state}`} aria-hidden="true" />
             <div>
               <h2 id="connection-title">{connection.state === 'ready' ? 'API connected' : connection.state === 'error' ? 'API unavailable' : 'Checking API connection…'}</h2>
-              <p role="status">{connection.state === 'ready' ? 'The application foundation is running. Historical data has not been ingested.' : connection.state === 'error' ? 'The service could not be reached. Check the backend and try again.' : 'Connecting to the WindSight service.'}</p>
+              <p role="status">{connection.state === 'ready' ? dataMessage : connection.state === 'error' ? 'The service could not be reached. Check the backend and try again.' : 'Connecting to the WindSight service.'}</p>
             </div>
           </div>
           {connection.state === 'error' && <button type="button" onClick={() => setAttempt((value) => value + 1)}>Try again <span aria-hidden="true">↗</span></button>}
@@ -88,7 +94,7 @@ export default function App() {
 
         <section className="method-note" aria-label="Methodology preview">
           <span className="method-icon" aria-hidden="true">i</span>
-          <p><strong>Evidence before insight.</strong> The planned comparison uses the latest eligible forecast and the average of two half-hour outturn readings. Metrics will appear after source data is ingested and validated.</p>
+          <p><strong>Evidence before insight.</strong> The planned comparison uses the latest eligible forecast and the average of two half-hour outturn readings. Metrics will appear once the analytical services are available.</p>
         </section>
       </main>
 
