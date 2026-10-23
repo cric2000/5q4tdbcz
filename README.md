@@ -2,9 +2,17 @@
 
 **Live application: [windsight-five.vercel.app](https://windsight-five.vercel.app).** Decision Replay, Accuracy & Risk and Forecast Evolution are deployed on Vercel. The React dashboard reconstructs decision-time forecasts, compares them with next-day actuals, reviews accuracy across buying days and traces publication history using the FastAPI analytical services and reproducible Elexon-to-SQLite snapshot.
 
-The public [API documentation](https://windsight-five.vercel.app/docs) lists the available endpoints. No sign-in is required.
+The public [API documentation](https://windsight-five.vercel.app/docs) lists the available endpoints. No sign-in is required. Pushing to `main` triggers an automatic Vercel production deployment; see [Deployment](docs/DEPLOYMENT.md) for the build and verification workflow.
 
 This pilot helps a GB electricity buyer reconstruct the latest wind forecast available before a day-ahead purchasing decision and evaluate its historical accuracy. Calculations use only national Elexon WINDFOR forecasts and FUELHH WIND outturn. These series cannot determine purchase quantities or trading profit.
+
+## Review the pilot
+
+1. Open [WindSight](https://windsight-five.vercel.app) and select **Review a buying day**. Choose **14 January 2026**. Delivery is January 15; the midnight forecast is **15,828 MW**, actual is **14,456.5 MW** and forecast minus actual is **+1,371.5 MW**.
+2. Open **Accuracy & risk** for January 1–31. All **744 hours** match; the average gap is **2,013.01 MW**. Bias keeps the direction of the differences, while MAE measures their size.
+3. In **Hours worth a closer look**, open the first **See history** action. Forecast Evolution shows January 12 at 01:00 UTC: forecast **20,905 MW**, actual **14,072 MW** and difference **+6,833 MW**. The deadline separates eligible publications from later revisions.
+
+The [public repository](https://github.com/cric2000/wind-energy) includes the validated snapshot, setup instructions and tests. [GitHub Actions passed for the production release commit](https://github.com/cric2000/wind-energy/actions/runs/39994365814).
 
 ## Run locally with Docker
 
@@ -99,7 +107,7 @@ Ingestion makes live, bounded Elexon requests and writes `backend/data/windsight
 ../.venv/bin/python -m scripts.inspect_snapshot > data/quality-report.json
 ```
 
-The SQLite snapshot is the authoritative artifact, including source URLs, exact request parameters, response hashes, observed timestamp ranges and retrieval timestamps. The JSON report is an exported summary. The generated database stays out of Git and is reproducible from the command above. `--database PATH` selects another output; direct API execution can use `WINDSIGHT_DATABASE_PATH` to read that path.
+The SQLite snapshot is the authoritative artifact, including source URLs, exact request parameters, response hashes, observed timestamp ranges and retrieval timestamps. The JSON report is an exported summary. The generated development database stays out of Git and is reproducible from the command above; the validated release copy and manifest under `backend/snapshot/` are versioned. `--database PATH` selects another output; direct API execution can use `WINDSIGHT_DATABASE_PATH` to read that path.
 
 Requests use daily WINDFOR publication windows from December 29, 2025 through February 2, 2026, and individual FUELHH settlement dates January 2–February 1. The publication window captures earlier eligible forecasts and later revisions; it is not an unlimited forecast archive. FUELHH requests filter `WIND` and never combine settlement-date and publication-date filters. Stream responses are JSON arrays; bounded requests are used instead of invented pagination.
 
@@ -216,11 +224,13 @@ Adding this design system changes dependencies, so an existing Docker setup need
 ## Structure
 
 ```text
-frontend/                   React + TypeScript + Vite, Decision Replay, Vitest
-frontend/src/api.ts          Typed and validated setup/metadata/replay requests
+frontend/                   React + TypeScript + Vite, three analytical views, Vitest
+frontend/src/api.ts          Typed and validated operational and analytical requests
 frontend/src/useResource.ts  Abortable requests, timeout/retry and stale-response protection
 frontend/src/DecisionReplay.tsx  Date controls, daily metrics, inspector and evidence table
 frontend/src/ReplayChart.tsx Responsive SVG forecast/actual lines and signed-error bars
+frontend/src/AnalysisViews.tsx  Accuracy filters, outliers and publication-history interactions
+frontend/src/AnalysisCharts.tsx  Daily trend, signed-error distribution and publication timeline
 frontend/src/components/ui/ shadcn/ui components
 frontend/src/lib/utils.ts    Tailwind class merging
 frontend/components.json    shadcn registry/style configuration
@@ -231,12 +241,19 @@ backend/app/analysis_schemas.py  Typed analytical responses with explicit units 
 backend/app/services/       Pure calculations and historical analysis orchestration
 backend/app/ingestion/      Elexon client, validation, acquisition and coverage checks
 backend/app/repositories/   Atomic snapshot publishing, inspection and read-only analysis queries
-backend/scripts/            Ingestion and inspection CLI commands
+backend/scripts/            Ingest, inspect, package and validate CLI commands
 backend/tests/              pytest service, ingestion and repository tests
-backend/data/               Generated SQLite snapshot and exported quality report
+backend/data/               Ignored development database and exported reports
+backend/snapshot/           Versioned release database and integrity manifest
 backend/requirements*.in    Pinned direct dependencies
 backend/requirements*.lock  Frozen runtime / development dependencies
 docs/APPROACH.md            Technical rationale and methodology
+docs/API.md                 Requests, response fields, units and calculation purpose
+docs/DEPLOYMENT.md          Snapshot packaging, production runtime and deployment
+scripts/smoke.py            Portable, Docker and public HTTP verification
+index.py                    Combined FastAPI and compiled React deployment entrypoint
+vercel.json                 Hosted installation, validation and build settings
+.github/workflows/ci.yml    Regression, build, snapshot and HTTP checks
 docker-compose.yml          Local two-service runtime
 docker-compose.override.yml Development source mounts and reload workers
 ```
@@ -259,7 +276,14 @@ npm run typecheck
 npm run build
 ```
 
-Current verification: **124 backend tests and 50 frontend tests passed**, with no failures or skips. Ruff, TypeScript checking and the frontend production build passed. All three live views were checked through the Docker/Vite proxy at desktop and mobile widths and on the public deployment in a browser. Checks include the January 14 replay example, full-January accuracy, an outlier-to-history link and the January 31→February 1 boundary. The backend test client emits one dependency deprecation warning for its `httpx` integration. Production Docker, the portable single-origin server and the public Vercel deployment passed the release HTTP smoke checks, including 744/744 comparisons and matching snapshot identity. The CI workflow is configured; a hosted Actions run remains pending until these changes are pushed.
+From the repository root, verify the release asset and public deployment:
+
+```bash
+PYTHONPATH=backend .venv/bin/python -m scripts.validate_snapshot
+.venv/bin/python scripts/smoke.py --base-url https://windsight-five.vercel.app --api-url https://windsight-five.vercel.app
+```
+
+Current verification: **124 backend tests and 50 frontend tests passed**, with no failures or skips. Ruff, TypeScript checking and the frontend production build passed. All three live views were checked through the Docker/Vite proxy at desktop and mobile widths and on the public deployment in a browser. Checks include the January 14 replay example, full-January accuracy, an outlier-to-history link and the January 31→February 1 boundary. The backend test client emits one dependency deprecation warning for its `httpx` integration. Production Docker, the portable single-origin server and the public Vercel deployment passed the release HTTP smoke checks, including 744/744 comparisons and matching snapshot identity. The [hosted workflow passed for release commit `37069a8`](https://github.com/cric2000/wind-energy/actions/runs/39994365814), including the production Docker build and HTTP checks. Later commits have their own workflow results.
 
 ## Implementation status
 
@@ -271,7 +295,7 @@ Current verification: **124 backend tests and 50 frontend tests passed**, with n
 | As-of selection, hourly averaging, metrics and typed APIs | Implemented; fixtures and real-data calculations verified |
 | Decision Replay | Implemented; real API chart, daily metrics, evidence table and request states verified |
 | Accuracy & Risk / Forecast Evolution screens | Implemented; range metrics, distribution, outlier links and publication timeline verified locally |
-| CI | Workflow configured; local equivalent checks pass; hosted run pending |
+| CI | Hosted workflow passed for release commit `37069a8`; local regression rerun also passed |
 | Production packaging | Versioned snapshot and manifest validated; Docker and portable HTTP smoke passed |
 | Vercel hosting | Published; anonymous frontend/API smoke and all three dashboard views verified |
 

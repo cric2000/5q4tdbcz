@@ -1,6 +1,6 @@
 # Production build and deployment
 
-The release is live at [windsight-five.vercel.app](https://windsight-five.vercel.app). The Vercel build, anonymous HTTP smoke and all three dashboard views were verified on October 23, 2026. A hosted GitHub Actions run remains pending until the changes are pushed.
+The release is live at [windsight-five.vercel.app](https://windsight-five.vercel.app). The Vercel build, anonymous HTTP smoke and all three dashboard views were verified on October 23, 2026. The [hosted workflow passed for release commit `37069a8`](https://github.com/cric2000/wind-energy/actions/runs/39994365814).
 
 ## The prepared data asset
 
@@ -84,7 +84,11 @@ Deployment settings:
 
 There is no API base URL or external database to configure: the frontend requests `/api/v1/...` on the same origin. Do not set an output-directory override: FastAPI registers the frontend directory. Development data, internal notes, environment files, tests and local caches are excluded from the upload or function bundle. The release snapshot is inside the function and outside the public frontend directory.
 
-The `windsight` project was created in the approved Vercel account and published using a CLI upload of the local workspace. This includes the release changes even before their Git commit. Git integration is not configured, so pushing alone does not currently redeploy this project. From this linked checkout, publish subsequent builds with:
+The `windsight` project is connected to `cric2000/wind-energy` through Vercel’s GitHub integration, with `main` as the production branch. Pushing a commit to `main` triggers Vercel to install dependencies, validate the packaged snapshot, build the app and publish the successful build at [windsight-five.vercel.app](https://windsight-five.vercel.app). Other branches and pull requests use preview deployments. The repository root and checked-in `vercel.json` provide the build settings.
+
+GitHub Actions runs its verification workflow independently of Vercel’s build; this integration does not wait for that workflow to pass. Vercel’s own build validates the snapshot and type-checks/compiles the frontend. Check both statuses for each release.
+
+The first release used a manual upload. Manual deployment from this linked checkout remains available:
 
 ```bash
 npx vercel@65.2.0 deploy --prod --scope cric2000s-projects
@@ -106,4 +110,4 @@ The app and [Swagger documentation](https://windsight-five.vercel.app/docs) use 
 
 `.github/workflows/ci.yml` runs on pushes, pull requests and manual dispatch. It installs locked dependencies with Python 3.14 and Node 24, runs Ruff and both test suites, builds React, validates the versioned snapshot, verifies the portable app, builds production containers and runs the same HTTP smoke. The workflow cleans up its test containers and has read-only repository permissions. It neither ingests data nor deploys publicly.
 
-Local results are recorded in the README. A green hosted CI run can only be claimed after these changes are pushed and GitHub Actions actually runs them.
+Local results are recorded in the README. The hosted run linked above completed successfully for commit `37069a8`, including both regression suites, frontend build, snapshot validation, portable HTTP smoke, production Docker build and production HTTP smoke. The failure-only diagnostics step was correctly skipped. Check the workflow for each later commit rather than treating an earlier successful run as verification of new changes.
