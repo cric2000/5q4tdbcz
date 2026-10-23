@@ -1,0 +1,25 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+backend/data/*.sqlite*
+backend/data/raw/
+*.log
+.DS_Store
+
+# Local planning and working notes
+/docs/IMPLEMENTATION_PLAN.md
+/docs/VIDEO_SCRIPT.md
+/docs/PHASE_*_REVIEW.md
+/docs/handoff/
+/docs/evidence/
