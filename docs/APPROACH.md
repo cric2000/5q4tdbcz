@@ -40,8 +40,8 @@ The packaged dataset contains **18,104 forecast versions, 1,488 actual half-hour
 
 ## Architecture and tradeoffs
 
-- **React/TypeScript, shadcn/ui and Tailwind:** a single buying overview, with optional actuals, tables and deeper views. SVG supplies charts without another chart dependency.
-- **FastAPI and SQLite:** typed routes delegate to shared calculations and read-only repositories. A prepared snapshot makes the historical pilot reproducible without an external runtime database.
+- **React/TypeScript, shadcn/ui and Tailwind:** separate buying, accuracy and evolution feature folders; shared UI, metadata/request hooks and chart helpers. API transport, types, validation and endpoint loaders are separate modules. SVG supplies charts without another chart dependency.
+- **FastAPI and SQLite:** typed routes delegate to shared calculations and read-only repositories. Pilot dates and the default cutoff live in `core/scope.py`; configuration, ingestion and analysis use that shared scope. A prepared snapshot makes the historical pilot reproducible without an external runtime database.
 - **Request safety:** the frontend checks consumed fields, date/window boundaries and snapshot/cutoff references; it aborts abandoned requests and hides stale results. Summary failures leave the forecast usable. Selection and derived values do not require additional Effects.
 - **Development and release:** Docker development uses source mounts and reload. Production uses compiled assets and the validated snapshot; [deployment details](DEPLOYMENT.md) describe Docker and Vercel.
 

@@ -3,7 +3,8 @@
 from datetime import timedelta
 from typing import Any
 
-from app.ingestion.models import Forecast, Outturn, Scope, utc_text
+from app.core.scope import Scope
+from app.ingestion.models import Forecast, Outturn, utc_text
 
 
 def coverage_report(

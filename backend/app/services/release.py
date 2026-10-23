@@ -5,7 +5,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from app.ingestion.models import IngestionError, Scope
+from app.core.scope import Scope
+from app.ingestion.models import IngestionError
 from app.ingestion.quality import coverage_report
 from app.repositories.analysis import open_analysis_repository
 from app.repositories.snapshot import content_sha256

@@ -2,9 +2,9 @@ from datetime import UTC, datetime
 
 import pytest
 
+from app.core.scope import Scope
 from app.ingestion.models import (
     IngestionError,
-    Scope,
     parse_forecast,
     parse_generation,
     parse_outturn,

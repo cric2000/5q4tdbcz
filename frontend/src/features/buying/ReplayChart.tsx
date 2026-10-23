@@ -1,20 +1,13 @@
-import { useId, useSyncExternalStore } from 'react';
+import type { HourlyComparison } from '@/api';
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
-import type { HourlyComparison } from './api';
-import { hourLabel, number, power, signed } from './format';
-
-const compactQuery = '(max-width: 640px)';
-function subscribeViewport(listener: () => void) {
-  const media = window.matchMedia?.(compactQuery);
-  media?.addEventListener('change', listener);
-  return () => media?.removeEventListener('change', listener);
-}
-const compactSnapshot = () => window.matchMedia?.(compactQuery).matches ?? false;
+import { useCompactViewport } from '@/hooks/useCompactViewport';
+import { hourLabel, number, power, signed } from '@/lib/format';
+import { useId } from 'react';
 
 // Start a separate segment after every missing observation; never draw across a gap.
 function linePath(
@@ -52,7 +45,7 @@ export default function ReplayChart({
   showActuals?: boolean;
 }) {
   const id = useId();
-  const compact = useSyncExternalStore(subscribeViewport, compactSnapshot, () => false);
+  const compact = useCompactViewport();
   const width = compact ? 560 : 1040;
   const left = compact ? 84 : 64,
     right = 20,

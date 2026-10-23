@@ -2,7 +2,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.ingestion.models import Forecast, Outturn, Scope
+from app.core.scope import Scope
+from app.ingestion.models import Forecast, Outturn
 from app.ingestion.quality import coverage_report
 from app.repositories.snapshot import write_snapshot
 

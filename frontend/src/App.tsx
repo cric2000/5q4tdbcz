@@ -1,22 +1,24 @@
-import { ArrowLeft, ArrowRight, Wind } from 'lucide-react';
-import { useState } from 'react';
+import { loadSetup } from './api';
+import { ProductGuide } from '@/components/analysis/ProductGuide';
+import { ErrorPanel, LoadingPanel } from '@/components/feedback/RequestState';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { loadSetup } from './api';
-import DecisionReplay, { ErrorPanel, LoadingPanel, ProductGuide } from './DecisionReplay';
-import { useResource } from './useResource';
-import SecondaryAnalysis from './AnalysisViews';
-import type { AnalysisView } from './AnalysisViews';
+import AnalysisView from '@/features/AnalysisView';
+import BuyingOverview from '@/features/buying/BuyingOverview';
+import type { WorkspaceView } from '@/features/types';
+import { useResource } from '@/hooks/useResource';
+import { ArrowLeft, ArrowRight, Wind } from 'lucide-react';
+import { useState } from 'react';
 
 const setupLoader = (_key: string, signal: AbortSignal) => loadSetup(signal);
 
 export default function App() {
-  const [view, setView] = useState<AnalysisView>('replay');
+  const [view, setView] = useState<WorkspaceView>('replay');
   const [historyTarget, setHistoryTarget] = useState<string | null>(null);
   const [decisionDate, setDecisionDate] = useState<string | null>(null);
   const [selectedHour, setSelectedHour] = useState(0);
-  const openView = (next: AnalysisView, target?: string) => {
+  const openView = (next: WorkspaceView, target?: string) => {
     if (target) setHistoryTarget(target);
     setView(next);
     const workspace = document.getElementById('replay-workspace');
@@ -65,8 +67,8 @@ export default function App() {
               Your wind forecast. <span className="text-primary">Its historical reliability.</span>
             </h1>
             <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-              Choose a buying day. See the wind forecast available at your deadline and its
-              measured historical accuracy together.
+              Choose a buying day. See the wind forecast available at your deadline and its measured
+              historical accuracy together.
             </p>
           </section>
           <section
@@ -124,7 +126,7 @@ export default function App() {
             )}
             {available &&
               (view === 'replay' ? (
-                <DecisionReplay
+                <BuyingOverview
                   decisionDate={decisionDate}
                   onDecisionDateChange={(date) => {
                     setDecisionDate(date);
@@ -136,7 +138,7 @@ export default function App() {
                   onInspect={(target) => openView('evolution', target)}
                 />
               ) : (
-                <SecondaryAnalysis
+                <AnalysisView
                   view={view}
                   initialTarget={historyTarget}
                   onInspect={(target) => openView('evolution', target)}

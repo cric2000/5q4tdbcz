@@ -9,8 +9,9 @@ from pathlib import Path
 import httpx
 
 from app.core.config import Settings
+from app.core.scope import Scope
 from app.ingestion.client import ElexonClient
-from app.ingestion.models import IngestionError, Scope
+from app.ingestion.models import IngestionError
 from app.ingestion.pipeline import acquire
 from app.repositories.snapshot import write_snapshot
 

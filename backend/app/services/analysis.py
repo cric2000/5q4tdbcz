@@ -20,7 +20,7 @@ from app.analysis_schemas import (
     SourceDescription,
 )
 from app.core.config import N2EX_REFERENCE_URL
-from app.ingestion.models import Scope
+from app.core.scope import Scope, date_range_label
 from app.repositories.analysis import AnalysisRepository
 from app.services.calculations import compare_hours, coverage, error_histogram, metrics
 from app.services.errors import InvalidAnalysisRequest
@@ -70,7 +70,8 @@ class AnalysisService:
         if start > end:
             raise InvalidAnalysisRequest("The decision-date start must be on or before the end.")
         if start < self.scope.decision_start or end > self.scope.decision_end:
-            raise InvalidAnalysisRequest("Decision dates must be within January 1–31, 2026.")
+            bounds = date_range_label(self.scope.decision_start, self.scope.decision_end)
+            raise InvalidAnalysisRequest(f"Decision dates must be within {bounds}.")
 
     def comparisons(
         self, start: date, end: date, *, known_at: datetime | None = None
@@ -168,9 +169,11 @@ class AnalysisService:
         if target.minute or target.second or target.microsecond:
             raise InvalidAnalysisRequest("The target must be an exact UTC delivery hour.")
         if not self.scope.delivery_start <= target < self.scope.delivery_end:
-            raise InvalidAnalysisRequest(
-                "Delivery hours must be within January 2–February 1, 2026."
+            bounds = date_range_label(
+                self.scope.delivery_start.date(),
+                (self.scope.delivery_end - timedelta(days=1)).date(),
             )
+            raise InvalidAnalysisRequest(f"Delivery hours must be within {bounds}.")
         decision = target.date() - timedelta(days=1)
         cutoff = self.scope.cutoff(decision)
         end = target + timedelta(hours=1)

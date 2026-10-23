@@ -4,12 +4,12 @@ from collections.abc import Callable
 from datetime import timedelta
 from typing import Any
 
+from app.core.scope import Scope
 from app.ingestion.client import ElexonClient
 from app.ingestion.models import (
     Forecast,
     IngestionError,
     Outturn,
-    Scope,
     parse_forecast,
     parse_outturn,
     utc_text,

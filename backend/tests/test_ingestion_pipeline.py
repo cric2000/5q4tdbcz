@@ -5,8 +5,9 @@ from datetime import date, timedelta
 import httpx
 import pytest
 
+from app.core.scope import Scope
 from app.ingestion.client import ElexonClient
-from app.ingestion.models import IngestionError, Scope, utc_text
+from app.ingestion.models import IngestionError, utc_text
 from app.ingestion.pipeline import acquire
 from app.repositories.snapshot import read_quality_report, write_snapshot
 

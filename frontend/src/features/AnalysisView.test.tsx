@@ -1,6 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
-import App from './App';
+import App from '@/App';
 import {
   accuracyRange,
   config,
@@ -11,7 +9,9 @@ import {
   metadata,
   priorAccuracy,
   response,
-} from './test/fixtures';
+} from '@/test/fixtures';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
 function api(overrides: Record<string, unknown> = {}) {
   return vi.fn().mockImplementation((path: string) => {

@@ -87,8 +87,9 @@ The overview's accuracy uses only earlier completed hours whose actual readings 
 
 | Path | Purpose |
 | --- | --- |
-| `frontend/src/` | Buying overview, retrospective analysis, publication history and UI tests |
-| `backend/app/` | Typed API, calculations, ingestion and read-only SQLite access |
+| `frontend/src/features/` | Separate buying, accuracy and evolution features with focused components/tests |
+| `frontend/src/api/`, `hooks/`, `components/`, `lib/` | API contracts/validation/loaders, shared request/chart hooks, UI and formatting |
+| `backend/app/` | Separate API, service, ingestion and read-only repository layers; shared scope/settings in `core/` |
 | `backend/scripts/`, `backend/tests/` | Data preparation commands and backend tests |
 | `backend/snapshot/` | Versioned release database and integrity manifest |
 | `backend/data/` | Local development database and exported diagnostic reports |

@@ -16,7 +16,7 @@ from app.analysis_schemas import (
     EvolutionResponse,
     PriorAccuracyResponse,
 )
-from app.ingestion.models import Scope
+from app.core.scope import DECISION_DATE_FROM, DECISION_DATE_TO, Scope
 from app.repositories.analysis import open_analysis_repository
 from app.services.analysis import AnalysisService
 
@@ -39,11 +39,14 @@ def analysis_service(request: Request) -> Iterator[AnalysisService]:
 Service = Annotated[AnalysisService, Depends(analysis_service)]
 FromDate = Annotated[
     DecisionDate | None,
-    Query(alias="from", description="Inclusive decision-date start; defaults to 2026-01-01."),
+    Query(
+        alias="from",
+        description=f"Inclusive decision-date start; defaults to {DECISION_DATE_FROM}.",
+    ),
 ]
 ToDate = Annotated[
     DecisionDate | None,
-    Query(alias="to", description="Inclusive decision-date end; defaults to 2026-01-31."),
+    Query(alias="to", description=f"Inclusive decision-date end; defaults to {DECISION_DATE_TO}."),
 ]
 router = APIRouter(
     prefix="/api/v1",

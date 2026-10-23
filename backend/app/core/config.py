@@ -6,6 +6,8 @@ from pathlib import Path
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.core.scope import DEFAULT_DECISION_CUTOFF_GMT
+
 N2EX_REFERENCE_URL = (
     "https://support.nordpoolgroup.com/support/solutions/articles/"
     "8000088463-about-the-n2ex-day-ahead-auction"
@@ -24,7 +26,7 @@ def default_database_path() -> Path:
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="WINDSIGHT_")
 
-    decision_cutoff_gmt: str = "09:50"
+    decision_cutoff_gmt: str = DEFAULT_DECISION_CUTOFF_GMT
     database_path: Path = Field(default_factory=default_database_path)
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 

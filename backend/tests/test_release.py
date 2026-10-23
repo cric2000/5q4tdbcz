@@ -8,7 +8,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
-from app.ingestion.models import Forecast, IngestionError, Outturn, Scope, utc_text
+from app.core.scope import Scope
+from app.ingestion.models import Forecast, IngestionError, Outturn, utc_text
 from app.ingestion.quality import coverage_report
 from app.main import create_app
 from app.repositories.snapshot import write_snapshot

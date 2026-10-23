@@ -1,7 +1,7 @@
+import { DailyTrend } from './AccuracyCharts';
+import { accuracyRange, emptyDecision } from '@/test/fixtures';
 import { render, screen } from '@testing-library/react';
 import { expect, it } from 'vitest';
-import { DailyTrend } from './AnalysisCharts';
-import { accuracyRange, emptyDecision } from './test/fixtures';
 
 it('breaks the daily trend at a missing day while preserving an actual zero gap', () => {
   const { daily } = accuracyRange('2026-01-01', '2026-01-03', 110);
