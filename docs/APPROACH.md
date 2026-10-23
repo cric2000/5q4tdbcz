@@ -1,12 +1,12 @@
 # My understanding and implementation approach
 
-**Current status: ingestion implemented and verified.** This document explains the technical choices, implemented behavior and planned analysis.
+**Current status: analytical APIs implemented and verified.** This document explains the technical choices, observed results and remaining dashboard work.
 
 ## What I understand the customer needs
 
 I am building a historical pilot for a GB electricity utility making day-ahead buying decisions. I want to reconstruct the national wind forecast available before a decision, then compare it with reported wind output after delivery. I cannot calculate the utility’s actual electricity purchase quantity because the allowed datasets do not include its demand, existing contracts or prices.
 
-I use React, Python and Docker, and limit the planned calculations to January 2026 buying decisions and Elexon national wind data. I keep the client’s decision-support needs separate from implementation assumptions.
+I use React, Python and Docker, and limit calculations to January 2026 buying decisions and Elexon national wind data. I keep the client’s decision-support needs separate from implementation assumptions.
 
 ## Sources, inference and my choice
 
@@ -20,13 +20,13 @@ The official source pages were checked during setup. Elexon’s JavaScript docum
 
 I interpret January **decision dates** as January 1–31, with next-day delivery January 2–February 1. This follows my chosen D→D+1 model. Ingestion has now verified source availability for all 744 target hours, including all 24 February 1 hours for the January 31 decision. January GMT equals UTC, and timestamps are normalized to timezone-aware UTC instants.
 
-## The calculation I plan to implement
+## The implemented calculation
 
-For each hour h on D+1, I will choose the WINDFOR record with maximum `publishTime` satisfying `publishTime <= cutoff(D)`. A missing eligible forecast stays missing. Later revisions will be retained for Forecast Evolution but excluded from the original decision replay.
+For each hour h on D+1, I choose the WINDFOR record with maximum `publishTime` satisfying `publishTime <= cutoff(D)`. An exactly-equal publication is eligible. A missing eligible forecast stays missing. Later revisions remain available in the evolution API but are excluded from the original decision replay.
 
-I will calculate `actual_hourly_average_mw = (actual[h] + actual[h+30min]) / 2` only when both outturn observations exist. Signed error will be forecast minus that hourly mean, with positive values meaning overforecast. MAE, RMSE, bias, P50/P90 absolute error, over/under/exact shares and matched coverage will use valid pairs only. There are 744 expected hours in this decision window; I will report observed completeness.
+I calculate `actual_hourly_average_mw = (actual[h] + actual[h+30min]) / 2` only when both outturn observations exist. Signed error is forecast minus that hourly mean, with positive values meaning overforecast. MAE, RMSE, bias, P50/P90 absolute error and over/under/exact shares use valid pairs only. Coverage uses all 744 expected hours, and the live data has 744 matches.
 
-I have prepared and validated the source snapshot. Its availability checks do not calculate forecast errors; the mathematical comparison remains the next implementation step.
+I distinguish missing forecasts, forecasts published only after the cutoff, and missing actual half-hours. Zero generation remains valid. With no matched pairs, error metrics and over/under shares are null. Percentiles use linear interpolation at `(n - 1) * quantile`; they describe observed errors, not a promise about tomorrow.
 
 I also recognize a comparison limitation: WINDFOR and FUELHH can represent different wind populations. Their difference does not isolate model error or establish a financial loss. MW is power; MWh requires an explicit duration.
 
@@ -62,14 +62,30 @@ I use SQLite primary keys `(target_time, publish_time)` for forecasts and `targe
 
 The live snapshot contains **18,104 forecast versions across 744 targets and 1,488 outturn half-hours**. All 744 hours have at least one publication eligible at the configured cutoff and both outturn half-hours. Every decision day has 24 comparable hours; no missing periods or conflicting keys were found. A second live acquisition reproduced the same content fingerprint and row counts. These counts apply to this decision scope and do not reuse the earlier research ZIP figures.
 
-The availability check asks whether an eligible forecast and two actual samples exist. It deliberately does not select and expose a final forecast curve or calculate hourly means, MAE, RMSE or bias. Those services are the next implementation step. I will continue to disclose any mismatch between the populations represented by the two Elexon series.
+The ingestion availability report still asks only whether an eligible forecast and two actual samples exist. A separate analytical layer now selects the exact eligible records, computes hourly means and calculates errors. I keep those responsibilities distinct so changing the configured cutoff recomputes current analysis without rewriting the source snapshot.
+
+## Analytical design and observed results
+
+I separated pure selection/statistics functions, a read-only repository, service orchestration, typed response models and route handlers. Each request uses one read-only SQLite connection, validates snapshot schema/counts and closes the connection afterward. Requests never fetch Elexon data. The per-request connection permits sequential FastAPI worker handoffs without being shared between requests.
+
+Decision replay, aggregate accuracy, daily accuracy, evolution, metadata and data quality are available under `/api/v1`. Shared source links, the cutoff assumption, UTC scope, units, snapshot freshness and limitations live in `/api/v1/metadata`. Analytical responses reference that source content through `meta.snapshot_id` and retain `meta.decision_cutoff_gmt`, since the same source snapshot can produce different results under different cutoffs. The frontend can fetch metadata once and refresh it if either reference changes. The [API field guide](API.md) documents every endpoint and response field. Date ranges are inclusive decision dates. Invalid inputs return structured 422 responses; missing or invalid snapshots return actionable 503 responses without filesystem paths. Incomplete but valid snapshots can still be analyzed, with explicit missing reasons.
+
+The evolution API shows all acquired publications in chronological order, marks the one selected at the cutoff and distinguishes unchanged values from genuine value changes. A repeated publication does not prove a new model run. The data-quality endpoint separates the ingestion report's original cutoff from coverage recomputed using current configuration.
+
+I first checked a fixture with errors **+10, −20 and 0 MW**: MAE 10 MW, RMSE √(500/3), bias −10/3 MW, P50 10 MW and P90 18 MW. A fourth unmatched hour changes coverage to 75% while leaving error statistics based on the three valid pairs. This makes the expected outputs independently understandable.
+
+On the real snapshot, all 744 hours match at the assumed 09:50 GMT cutoff. The observed MAE is **2,013.01 MW**, RMSE **2,505.94 MW**, bias **+1,729.93 MW**, P50 absolute error **1,608 MW**, P90 **4,143.85 MW** and maximum absolute error **6,833 MW**. There are 627 overforecast and 117 underforecast hours. I cross-checked these results with a separate SQL window-function selection and Decimal calculations, and verified that all 31 daily responses reconcile with the aggregate.
+
+For the January 14 decision and January 15 midnight target, the selected 09:30 publication is 15,828 MW. The actual half-hours are 14,602 and 14,311 MW. Their mean is **14,456.5 MW**, making the signed error **+1,371.5 MW**. The first half-hour alone would give a different result and is not the canonical hourly comparison.
+
+These figures compare Elexon series that may represent different wind populations. I do not describe the positive bias as proven intrinsic model bias, a utility procurement shortfall or a financial loss. Dashboard presentation and production data packaging are still pending.
 
 ## Verification
 
-Current verification produced **60 passing backend tests and 7 passing frontend tests**, with no failures or skips. Backend tests cover source parsing, missing/bad fields, UTC conversion, request bounds and retries, duplicate conflicts, missing half-hours, cutoff availability, the January 31 boundary, atomic database preservation, stable rebuild identity and snapshot health states. Frontend tests cover configuration, ready/missing/incomplete/invalid snapshot messages, loading, failure/retry and malformed responses.
+Current verification produced **112 passing backend tests and 7 passing frontend tests**, with no failures or skips. Tests cover ingestion, mathematical fixtures, before/equal/after cutoff, changed configuration, exact targets, incomplete actuals, zero generation, January 31→February 1, empty samples, percentile interpolation, typed API contracts, structured errors, read-only access and SQLite worker handoffs. The existing frontend state tests continue to pass.
 
 Ruff checks, TypeScript checking, the production build, Docker startup and the Vite/Nginx API proxies passed. The running page was checked at desktop and narrow-screen widths. One development test dependency emits a deprecation warning about its `httpx` integration.
 
 The Docker development reload workflow was checked with temporary source edits that were then restored. A React text change appeared in the open browser through hot module replacement without a page refresh. A Python change appeared in the API response through Uvicorn reload while the backend container identity remained unchanged.
 
-The next technical work is tested analytical services: exact as-of selection, two-half-hour actual averaging, error metrics, coverage reasons and typed analysis endpoints. No accuracy result is claimed before those calculations are implemented and checked.
+Twenty-four concurrent analytical requests through the frontend proxy passed, and both Docker services are healthy. The next technical work is the primary Decision Replay frontend: a January decision picker, real forecast/actual chart, daily metrics, publication details, accessible table and loading/error/missing states.

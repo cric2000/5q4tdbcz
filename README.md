@@ -1,6 +1,6 @@
 # WindSight — Day-ahead wind intelligence
 
-**Current status: ingestion implemented and verified.** React, FastAPI, Docker and a reproducible Elexon-to-SQLite pipeline are present. The local snapshot covers all January decision dates. Analytical APIs and dashboard views remain planned; no accuracy figures have been calculated yet.
+**Current status: analytical APIs implemented and verified.** React, FastAPI, Docker and the reproducible Elexon-to-SQLite pipeline are present. APIs reconstruct decision-time forecasts and quantify errors across all January decision dates. Interactive dashboard views remain planned.
 
 This pilot will help a GB electricity buyer reconstruct the latest wind forecast available before a day-ahead purchasing decision and evaluate its historical accuracy. Calculations will use only national Elexon WINDFOR forecasts and FUELHH WIND outturn. These series cannot determine purchase quantities or trading profit.
 
@@ -71,7 +71,7 @@ Vite proxies `/api` to `127.0.0.1:8000` by default. Stop Docker first to free th
 
 ## Configure the reference assumption
 
-`WINDSIGHT_DECISION_CUTOFF_GMT` is validated centrally as a 24-hour `HH:MM` value, default `09:50`. `GET /api/v1/config` supplies this value to the client. The planned selection and metric services will consume the same configuration.
+`WINDSIGHT_DECISION_CUTOFF_GMT` is validated centrally as a 24-hour `HH:MM` value, default `09:50`. Configuration, replay, accuracy, revision eligibility and current coverage all use this value. The ingestion report retains the cutoff used when that snapshot was built; the data-quality API distinguishes it from current configured coverage.
 
 For Docker, copy `.env.example` to `.env` and edit it. Compose reads `.env`; direct Uvicorn uses exported environment variables (it does not automatically load this file). `WINDSIGHT_CORS_ORIGINS` accepts a JSON list of allowed origins; local Vite and Nginx normally use the same-origin proxy.
 
@@ -116,27 +116,69 @@ Verified source availability, using the configured 09:50 GMT assumption:
 | Conflicting duplicate keys | 0 |
 | January 31 decision → February 1 comparable hours | 24 / 24 |
 
-These are availability counts, **not accuracy metrics**. See [the generated quality report](backend/data/quality-report.json) for daily coverage and provenance summary. After ingestion, refresh the landing page to fetch its latest snapshot status.
+These are availability counts. See [the generated quality report](backend/data/quality-report.json) for daily coverage and provenance summary. After ingestion, refresh the landing page to fetch its latest snapshot status.
+
+## Analytical APIs
+
+Explore the typed endpoints in [Swagger](http://localhost:8000/docs), or read the [API field guide](docs/API.md) for every request, response and field purpose. Analysis reads the prepared SQLite snapshot and never fetches Elexon data during a request. Fetch `/api/v1/metadata` once for the shared cutoff assumption, UTC scope, units, sources, snapshot freshness and comparison limitations. Analytical results contain only a small `meta` reference: `snapshot_id` (matching metadata's `snapshot.content_sha256`) and the configured `decision_cutoff_gmt`. Refresh cached metadata if either changes. Power fields carry `_mw` in their names.
+
+| GET endpoint | Response |
+| --- | --- |
+| `/api/v1/metadata` | Methodology, configured scope/cutoff and snapshot provenance |
+| `/api/v1/decisions/2026-01-14` | Next-day 24-hour replay, selected publication per hour, actual means, missing reasons and daily metrics |
+| `/api/v1/accuracy?from=2026-01-01&to=2026-01-31` | Aggregate metrics, signed-error histogram and ten largest absolute errors |
+| `/api/v1/accuracy/daily?from=2026-01-01&to=2026-01-31` | Metrics by decision date |
+| `/api/v1/evolution?target_time=2026-01-15T00:00:00Z` | Chronological publications, cutoff eligibility, chosen record, unchanged-value markers and retrospective actual mean |
+| `/api/v1/data-quality` | Current coverage and missing hours, plus the original ingestion report |
+
+`from` and `to` are inclusive decision dates and default to January 1–31. Dates must use `YYYY-MM-DD` within that range. Evolution requires a timezone-aware exact hourly target within January 2–February 1; offsets are normalized to UTC. Missing observations stay null with explicit reasons. Missing/corrupt snapshots return HTTP 503; invalid parameters return HTTP 422. Both use `{"error":{"code":"...","message":"...","issues":[]}}` without exposing a filesystem path or stack trace.
+
+Try the APIs from the project root:
+
+```bash
+curl "http://localhost:8000/api/v1/decisions/2026-01-14"
+curl "http://localhost:8000/api/v1/accuracy?from=2026-01-01&to=2026-01-31"
+curl "http://localhost:8000/api/v1/evolution?target_time=2026-01-15T00:00:00Z"
+```
+
+Verified results for the complete January decision window at the assumed 09:50 GMT cutoff:
+
+| Metric | Observed |
+| --- | ---: |
+| Matched hours / expected | 744 / 744 (100%) |
+| MAE | 2,013.01 MW |
+| RMSE | 2,505.94 MW |
+| Mean signed bias | +1,729.93 MW |
+| P50 absolute error | 1,608.00 MW |
+| P90 absolute error | 4,143.85 MW |
+| Maximum absolute error | 6,833.00 MW |
+| Overforecast / underforecast / exact hours | 627 / 117 / 0 |
+
+The [accuracy report](backend/data/accuracy-report.json) contains full-precision API output; its [companion metadata](backend/data/metadata-report.json) records the methodology and snapshot provenance. Results were cross-checked using a separate SQL as-of selection and Decimal arithmetic. Positive bias describes this Elexon-series comparison; differing source populations may contribute. Observed percentiles are not calibrated prediction intervals.
+
+For example, the January 14 09:30 UTC publication forecast January 15 midnight at 15,828 MW. The two actual half-hours are 14,602 and 14,311 MW, giving an hourly mean of **14,456.5 MW** and signed error of **+1,371.5 MW**. Comparing only the first half-hour would produce a different, incorrect hourly error.
 
 ## Methodology and source provenance
 
 - **Scope:** React, Python and Docker; national Elexon wind forecasts and outturn; January 2026 purchase decisions and quantitative forecast accuracy.
 - **Interpretation:** decision day D maps to D+1 delivery: January 1–31 decisions imply January 2–February 1 delivery. Expected comparisons are 744 hourly periods, subject to actual coverage.
 - **Assumption:** 09:50 GMT uses [Nord Pool’s N2EX guide](https://support.nordpoolgroup.com/support/solutions/articles/8000088463-about-the-n2ex-day-ahead-auction), dated July 26, 2022. The client did not specify its exchange or deadline. This reference is not an operational specification for all UK markets.
-- **Planned selection:** for each exact next-day hourly target, choose the latest [WINDFOR](https://bmrs.elexon.co.uk/api-documentation/endpoint/datasets/WINDFOR/stream) publication at or before that decision’s configured cutoff.
-- **Planned alignment:** compare forecast MW with the mean of both corresponding [FUELHH](https://bmrs.elexon.co.uk/api-documentation/endpoint/datasets/FUELHH/stream) WIND half-hour average MW values. Incomplete hours remain missing. Signed error is forecast minus hourly-average outturn; positive means overforecast.
+- **Selection:** for each exact next-day hourly target, choose the latest [WINDFOR](https://bmrs.elexon.co.uk/api-documentation/endpoint/datasets/WINDFOR/stream) publication at or before that decision’s configured cutoff. Equality is eligible; later publications are excluded from replay.
+- **Alignment:** compare forecast MW with the mean of both corresponding [FUELHH](https://bmrs.elexon.co.uk/api-documentation/endpoint/datasets/FUELHH/stream) WIND half-hour average MW values. Incomplete hours remain missing. Signed error is forecast minus hourly-average outturn; positive means overforecast.
+- **Statistics:** only matched pairs contribute to MAE, RMSE, bias, absolute-error percentiles and over/under/exact shares. Percentiles use linear interpolation at `(n - 1) * quantile`. Empty matched samples return null metrics and rates. Coverage uses all expected hours; missing-reason counts can overlap.
 - **Limitations:** source populations may differ; observed errors are series comparisons. No demand, prices, actual bids, exact procurement deficits or financial savings can be inferred.
 
 ## Structure
 
 ```text
 frontend/                   React + TypeScript + Vite, connection states, Vitest
-backend/app/api/            Health, snapshot status and pilot configuration routes
+backend/app/api/            Operational/analytical routes and structured error handlers
 backend/app/core/           Validated environment configuration
-backend/app/schemas.py      Pydantic response contracts
-backend/app/services/       Reserved for analytical services
+backend/app/schemas.py      Operational response contracts
+backend/app/analysis_schemas.py  Typed analytical responses with explicit units and missing values
+backend/app/services/       Pure calculations and historical analysis orchestration
 backend/app/ingestion/      Elexon client, validation, acquisition and coverage checks
-backend/app/repositories/   Atomic SQLite snapshot publishing and read-only inspection
+backend/app/repositories/   Atomic snapshot publishing, inspection and read-only analysis queries
 backend/scripts/            Ingestion and inspection CLI commands
 backend/tests/              pytest service, ingestion and repository tests
 backend/data/               Generated SQLite snapshot and exported quality report
@@ -165,7 +207,7 @@ npm run typecheck
 npm run build
 ```
 
-Current verification: **60 backend tests and 7 frontend tests passed**, with no failures or skips. Ruff, TypeScript checking, the frontend production build, Docker startup and the development API proxy passed. The backend test client emits one dependency deprecation warning for its `httpx` integration. CI and deployed end-to-end verification remain planned.
+Current verification: **112 backend tests and 7 frontend tests passed**, with no failures or skips. Ruff, TypeScript checking, the frontend build, Docker startup and concurrent analytical requests through the frontend proxy passed. The backend test client emits one dependency deprecation warning for its `httpx` integration. CI and deployed end-to-end verification remain planned.
 
 ## Implementation status
 
@@ -174,7 +216,7 @@ Current verification: **60 backend tests and 7 frontend tests passed**, with no 
 | React/FastAPI scaffold, health, configurable assumption | Implemented |
 | Docker, tests, frontend build | Verified locally |
 | Live ingestion / SQLite / quality report | Implemented; full decision-window coverage verified |
-| As-of selection, hourly averaging, metrics | Planned |
+| As-of selection, hourly averaging, metrics and typed APIs | Implemented; fixtures and real-data calculations verified |
 | Decision Replay / Accuracy / Evolution | Planned |
 | CI and public hosting | Planned; no public application URL yet |
 

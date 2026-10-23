@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 
+from app.api.analysis_routes import router as analysis_router
+from app.api.errors import register_error_handlers
 from app.api.routes import router
 from app.core.config import Settings
 
@@ -11,7 +13,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application = FastAPI(
         title="WindSight API",
         version="0.1.0",
-        description="Historical wind pilot: health, snapshot status and pilot configuration.",
+        description="Historical wind replay, hourly outturn alignment and accuracy analysis.",
     )
     application.state.settings = config
     application.add_middleware(
@@ -21,6 +23,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["Accept", "Content-Type"],
     )
     application.include_router(router)
+    application.include_router(analysis_router)
+    register_error_handlers(application)
 
     @application.get("/", response_class=HTMLResponse, include_in_schema=False)
     def welcome() -> str:

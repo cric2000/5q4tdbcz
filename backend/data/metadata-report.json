@@ -1,0 +1,49 @@
+{
+  "decision_date_from": "2026-01-01",
+  "decision_date_to": "2026-01-31",
+  "delivery_date_from": "2026-01-02",
+  "delivery_date_to": "2026-02-01",
+  "decision_cutoff_gmt": "09:50",
+  "cutoff_is_assumed": true,
+  "cutoff_reference_url": "https://support.nordpoolgroup.com/support/solutions/articles/8000088463-about-the-n2ex-day-ahead-auction",
+  "timezone": "UTC",
+  "power_unit": "MW",
+  "comparison_resolution_minutes": 60,
+  "actuals_are_retrospective": true,
+  "actual_aggregation": "Mean of both corresponding half-hour average MW readings",
+  "error_definition": "Forecast MW minus hourly-average actual MW; positive is overforecast",
+  "percentile_method": "Linear interpolation at (n - 1) * quantile",
+  "sources": [
+    {
+      "dataset": "WINDFOR",
+      "documentation_url": "https://bmrs.elexon.co.uk/api-documentation/endpoint/datasets/WINDFOR/stream",
+      "native_resolution": "Hourly forecast targets in the acquired snapshot",
+      "unit": "MW"
+    },
+    {
+      "dataset": "FUELHH WIND",
+      "documentation_url": "https://bmrs.elexon.co.uk/api-documentation/endpoint/datasets/FUELHH/stream",
+      "native_resolution": "30-minute average MW",
+      "unit": "MW"
+    }
+  ],
+  "snapshot": {
+    "schema_version": 1,
+    "content_sha256": "fb71c007d70b0b92481af1555e98b9a11f9ee2b02463f5d244814de5fb89e177",
+    "retrieved_at": "2026-10-23T12:27:58Z",
+    "snapshot_created_at": "2026-10-23T12:27:59Z",
+    "publication_start": "2025-12-29T00:00:00Z",
+    "publication_end_exclusive": "2026-02-03T00:00:00Z",
+    "forecast_records": 18104,
+    "forecast_target_hours": 744,
+    "outturn_half_hours": 1488
+  },
+  "limitations": [
+    "The cutoff is an N2EX reference assumption, not a confirmed client deadline.",
+    "WINDFOR and FUELHH may cover different populations; errors compare the series.",
+    "Actuals are retrospective and were not available at the buying cutoff.",
+    "No purchase quantities, financial losses or predictive guarantees are inferred.",
+    "Revision history is limited to the stated acquisition publication window.",
+    "Unchanged republications do not establish a new forecasting model run."
+  ]
+}
