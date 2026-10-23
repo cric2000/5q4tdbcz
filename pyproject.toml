@@ -1,0 +1,7 @@
+[tool.vercel]
+entrypoint = "index:app"
+
+# Only the compiled React assets are public; no authentication guards apply to them.
+# API middleware and read-only analytical routes continue to run in the function.
+[tool.vercel.fastapi.static]
+cdn = true

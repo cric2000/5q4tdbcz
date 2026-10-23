@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
@@ -8,7 +10,9 @@ from app.api.routes import router
 from app.core.config import Settings
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None, *, frontend_directory: Path | None = None
+) -> FastAPI:
     config = settings if settings is not None else Settings()
     application = FastAPI(
         title="WindSight API",
@@ -26,7 +30,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(analysis_router)
     register_error_handlers(application)
 
-    @application.get("/", response_class=HTMLResponse, include_in_schema=False)
+    @application.get(
+        "/api" if frontend_directory is not None else "/",
+        response_class=HTMLResponse,
+        include_in_schema=False,
+    )
     def welcome() -> str:
         return """<!doctype html>
 <html lang="en">
@@ -41,6 +49,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 </body>
 </html>"""
 
+    if frontend_directory is not None:
+        # Hash-based navigation needs no HTML fallback for unknown API/asset paths.
+        # The build directory is created before the deployment build completes.
+        application.frontend("/", directory=frontend_directory, fallback=None, check_dir=False)
     return application
 
 

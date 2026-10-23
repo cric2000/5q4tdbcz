@@ -33,21 +33,15 @@ CREATE TABLE source_requests (id INTEGER PRIMARY KEY, dataset TEXT NOT NULL, det
 """
 
 
-def write_snapshot(
-    destination: Path,
+def content_sha256(
     forecasts: list[Forecast],
     outturn: list[Outturn],
     quality: dict[str, Any],
-    batches: list[dict[str, Any]],
-    *,
-    allow_incomplete: bool = False,
-) -> dict[str, Any]:
-    if not quality["complete"] and not allow_incomplete:
-        raise IngestionError("Coverage is incomplete; existing snapshot was not changed")
-    records = canonical_records(forecasts, outturn)
+) -> str:
+    """Recompute the same source identity during ingestion and release validation."""
     identity = {
         "schema_version": SCHEMA_VERSION,
-        "records": records,
+        "records": canonical_records(forecasts, outturn),
         "scope": {
             key: quality[key]
             for key in (
@@ -59,9 +53,23 @@ def write_snapshot(
             )
         },
     }
-    digest = hashlib.sha256(
+    return hashlib.sha256(
         json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
+
+
+def write_snapshot(
+    destination: Path,
+    forecasts: list[Forecast],
+    outturn: list[Outturn],
+    quality: dict[str, Any],
+    batches: list[dict[str, Any]],
+    *,
+    allow_incomplete: bool = False,
+) -> dict[str, Any]:
+    if not quality["complete"] and not allow_incomplete:
+        raise IngestionError("Coverage is incomplete; existing snapshot was not changed")
+    digest = content_sha256(forecasts, outturn, quality)
     report = {
         **quality,
         "schema_version": SCHEMA_VERSION,

@@ -16,6 +16,7 @@ backend/data/*.sqlite*
 backend/data/raw/
 *.log
 .DS_Store
+.vercel/
 
 # Local planning and working notes
 /docs/IMPLEMENTATION_PLAN.md

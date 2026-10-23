@@ -1,11 +1,14 @@
 services:
   backend:
     build: ./backend
+    read_only: true
+    tmpfs:
+      - /tmp
     environment:
       WINDSIGHT_DECISION_CUTOFF_GMT: ${WINDSIGHT_DECISION_CUTOFF_GMT:-09:50}
       WINDSIGHT_CORS_ORIGINS: '${WINDSIGHT_CORS_ORIGINS:-["http://localhost:5173","http://127.0.0.1:5173"]}'
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:${WINDSIGHT_API_PORT:-8000}:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
       interval: 5s
@@ -17,7 +20,7 @@ services:
   frontend:
     build: ./frontend
     ports:
-      - "127.0.0.1:5173:8080"
+      - "127.0.0.1:${WINDSIGHT_WEB_PORT:-5173}:8080"
     depends_on:
       backend:
         condition: service_healthy

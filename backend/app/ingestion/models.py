@@ -132,6 +132,7 @@ def canonical_records(forecasts: list[Forecast], outturn: list[Outturn]) -> dict
         "forecasts": [
             {
                 **asdict(row),
+                "generation_mw": float(row.generation_mw),
                 "target_time": utc_text(row.target_time),
                 "publish_time": utc_text(row.publish_time),
             }
@@ -140,6 +141,7 @@ def canonical_records(forecasts: list[Forecast], outturn: list[Outturn]) -> dict
         "outturn": [
             {
                 **asdict(row),
+                "generation_mw": float(row.generation_mw),
                 "target_time": utc_text(row.target_time),
                 "publish_time": utc_text(row.publish_time),
                 "settlement_date": row.settlement_date.isoformat(),

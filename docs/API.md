@@ -33,7 +33,7 @@ Refresh cached metadata if either value differs from the cached metadata. The sn
 
 **Request:** no parameters.
 
-**Response:** HTTP 200, HTML displaying “Welcome to the WindSight API” and a `/docs` link. This is a human-friendly entry point, not a JSON data endpoint.
+**Response:** The API-only server returns HTTP 200 HTML displaying “Welcome to the WindSight API” and a `/docs` link. The combined production entrypoint serves React at `/` and moves this welcome page to `/api`. Docker/Nginx also exposes the welcome page at `/api` through its frontend origin. These welcome pages are human-friendly, not JSON analytical responses.
 
 ## GET `/api/v1/health`
 

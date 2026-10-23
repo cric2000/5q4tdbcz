@@ -1,0 +1,14 @@
+{
+  "format_version": 1,
+  "snapshot_file": "windsight.db",
+  "file_sha256": "afd0942234fc5925882732e72e4c7dc18c535d9945a37907f8f7d8ce9e812aca",
+  "content_sha256": "fb71c007d70b0b92481af1555e98b9a11f9ee2b02463f5d244814de5fb89e177",
+  "schema_version": 1,
+  "decision_date_from": "2026-01-01",
+  "decision_date_to": "2026-01-31",
+  "decision_cutoff_gmt": "09:50",
+  "forecast_records": 18104,
+  "outturn_half_hours": 1488,
+  "matched_hours": 744,
+  "retrieved_at": "2026-10-23T12:27:58Z"
+}

@@ -1,6 +1,8 @@
 # WindSight — Day-ahead wind intelligence
 
-**Current status: Decision Replay, Accuracy & Risk and Forecast Evolution implemented and verified locally.** The React dashboard reconstructs decision-time forecasts, compares them with next-day actuals, reviews accuracy across buying days and traces publication history using the FastAPI analytical services and reproducible Elexon-to-SQLite snapshot.
+**Live application: [windsight-five.vercel.app](https://windsight-five.vercel.app).** Decision Replay, Accuracy & Risk and Forecast Evolution are deployed on Vercel. The React dashboard reconstructs decision-time forecasts, compares them with next-day actuals, reviews accuracy across buying days and traces publication history using the FastAPI analytical services and reproducible Elexon-to-SQLite snapshot.
+
+The public [API documentation](https://windsight-five.vercel.app/docs) lists the available endpoints. No sign-in is required.
 
 This pilot helps a GB electricity buyer reconstruct the latest wind forecast available before a day-ahead purchasing decision and evaluate its historical accuracy. Calculations use only national Elexon WINDFOR forecasts and FUELHH WIND outturn. These series cannot determine purchase quantities or trading profit.
 
@@ -22,7 +24,7 @@ Docker Compose automatically loads the development override. The frontend runs V
 
 Run the command above once to build the images. After stopping the services, subsequent starts can use `docker compose up -d --wait`. Rebuild with `--build` when changing dependencies, lockfiles or Dockerfiles. Changes to environment variables or Compose configuration require recreating the services with `docker compose up -d --wait`.
 
-Startup requires no Elexon requests or data archive. Health describes service liveness and separately reports whether the local snapshot is ready, missing, incomplete or invalid. The development configuration mounts `backend/data/` so ingestion outputs persist on the host.
+Startup makes no Elexon requests. A fresh checkout reads the bundled, validated release snapshot. Development prefers an explicitly ingested database in `backend/data/` when one exists, and mounts that directory so local ingestion outputs persist. Health separately reports liveness and snapshot readiness; a missing or invalid explicit database path still produces an honest setup state.
 
 ```bash
 docker compose down
@@ -37,9 +39,9 @@ docker compose -f docker-compose.yml up --build -d --wait
 
 Production uses compiled React served by Nginx, with no source mounts or reload workers. The application URLs stay the same. Switch back to development with `docker compose up --build -d --wait`.
 
-The production image does not yet bundle the generated historical database; production data packaging remains planned. Without that asset its health response correctly reports `not_ingested`.
+The production image bundles `backend/snapshot/windsight.db` and its integrity manifest. Its build validates the asset offline, and the API reads it without startup ingestion. The backend container and packaged files are read-only.
 
-For deployment, first run ingestion and inspect the quality report to confirm complete coverage. Then package the validated SQLite snapshot with the application as a read-only data asset. The deployed app should read that prepared snapshot without fetching Elexon data during startup. Hosting-specific packaging instructions will be added when deployment is implemented.
+After intentional ingestion, prepare a new release copy with `python -m scripts.package_snapshot` from `backend/`, then validate it with `python -m scripts.validate_snapshot`. Review and commit the release database and manifest together. Full Docker, portable-server, CI and Vercel instructions are in [Deployment](docs/DEPLOYMENT.md). The public deployment passed anonymous HTTP smoke checks using the bundled snapshot.
 
 ## Develop without Docker
 
@@ -257,7 +259,7 @@ npm run typecheck
 npm run build
 ```
 
-Current verification: **112 backend tests and 50 frontend tests passed**, with no failures or skips. Ruff, TypeScript checking and the frontend production build passed. All three live views were checked through the Docker/Vite proxy at desktop and mobile widths. Checks include the January 14 replay example, full-January accuracy, an outlier-to-history link and the January 31→February 1 boundary. The backend test client emits one dependency deprecation warning for its `httpx` integration. CI and deployed end-to-end verification remain planned.
+Current verification: **124 backend tests and 50 frontend tests passed**, with no failures or skips. Ruff, TypeScript checking and the frontend production build passed. All three live views were checked through the Docker/Vite proxy at desktop and mobile widths and on the public deployment in a browser. Checks include the January 14 replay example, full-January accuracy, an outlier-to-history link and the January 31→February 1 boundary. The backend test client emits one dependency deprecation warning for its `httpx` integration. Production Docker, the portable single-origin server and the public Vercel deployment passed the release HTTP smoke checks, including 744/744 comparisons and matching snapshot identity. The CI workflow is configured; a hosted Actions run remains pending until these changes are pushed.
 
 ## Implementation status
 
@@ -269,7 +271,9 @@ Current verification: **112 backend tests and 50 frontend tests passed**, with n
 | As-of selection, hourly averaging, metrics and typed APIs | Implemented; fixtures and real-data calculations verified |
 | Decision Replay | Implemented; real API chart, daily metrics, evidence table and request states verified |
 | Accuracy & Risk / Forecast Evolution screens | Implemented; range metrics, distribution, outlier links and publication timeline verified locally |
-| CI and public hosting | Planned; no public application URL yet |
+| CI | Workflow configured; local equivalent checks pass; hosted run pending |
+| Production packaging | Versioned snapshot and manifest validated; Docker and portable HTTP smoke passed |
+| Vercel hosting | Published; anonymous frontend/API smoke and all three dashboard views verified |
 
 ## AI assistance
 

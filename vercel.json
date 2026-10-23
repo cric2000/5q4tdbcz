@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "fastapi",
+  "installCommand": "uv pip install -r requirements.txt && npm ci --prefix frontend",
+  "buildCommand": "PYTHONPATH=backend python -m scripts.validate_snapshot && npm run build --prefix frontend",
+  "functions": {
+    "index.py": {
+      "excludeFiles": "{.git/**,.github/**,.venv/**,docs/**,backend/tests/**,backend/data/**,frontend/node_modules/**,frontend/src/**,**/__pycache__/**,**/.pytest_cache/**,**/.ruff_cache/**}"
+    }
+  }
+}

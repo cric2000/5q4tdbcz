@@ -1,6 +1,6 @@
 # My understanding and implementation approach
 
-**Current status: Decision Replay implemented and verified.** This document explains the technical choices, observed results and remaining dashboard work.
+**Current status: all three analytical views are deployed and verified.** The public application is [windsight-five.vercel.app](https://windsight-five.vercel.app). This document explains the technical choices, observed results and limitations.
 
 ## What I understand the customer needs
 
@@ -34,13 +34,13 @@ I also recognize a comparison limitation: WINDFOR and FUELHH can represent diffe
 
 I chose React/TypeScript/Vite and FastAPI with Pydantic settings. The API exposes service health, snapshot status and pilot configuration, with no data ingestion at startup. Configuration is returned by the API so the React page does not duplicate the deadline. The application distinguishes ready, missing, incomplete and invalid snapshots. Ready and valid incomplete snapshots open the analytical workspace with Decision Replay, Accuracy & Risk and Forecast Evolution. Status text is derived during React rendering rather than synchronized through another Effect.
 
-The API root serves a simple welcome page with a link to the interactive endpoint documentation at `/docs`.
+The API-only root serves a welcome page linking to `/docs`. The combined public deployment serves React at `/` and the API welcome at `/api`.
 
-I use `WINDSIGHT_DECISION_CUTOFF_GMT`, validated as `HH:MM`, with a default of `09:50`. Docker reads `.env` through Compose; direct Uvicorn uses environment variables. I defer a user-editable deadline control and a broader UI component library. The 24-hour replay uses SVG without adding a chart dependency.
+I use `WINDSIGHT_DECISION_CUTOFF_GMT`, validated as `HH:MM`, with a default of `09:50`. Docker reads `.env` through Compose; direct Uvicorn uses environment variables. I defer a user-editable deadline control. The interface uses shadcn/ui and Tailwind, described below. The 24-hour replay uses SVG without adding a chart dependency.
 
 For Docker I use Node 24 and Python 3.14. The default development configuration mounts source files and runs Vite hot module replacement alongside Uvicorn reload, so routine edits do not require an image rebuild. Vite proxies API requests to the backend service over the Docker network; direct host development defaults to loopback.
 
-The explicit production configuration builds React and serves it through unprivileged Nginx, without source mounts or reload workers. The host also has Node 24 and Python 3.14, so this avoids an unnecessary runtime mismatch. Images are version-family tags, not immutable digests; package dependencies are pinned and frozen. Hosting on Vercel/Heroku remains a later, separately verified task; Compose does not establish that deployment works.
+The explicit production configuration builds React and serves it through unprivileged Nginx, without source mounts or reload workers. It includes the validated snapshot and manifest; the API runs with a read-only filesystem. Development prefers its independently ingested database and otherwise reads the bundled snapshot on a fresh checkout. The host also has Node 24 and Python 3.14, so this avoids an unnecessary runtime mismatch. Images are version-family tags, not immutable digests; package dependencies are pinned and frozen. The separate Vercel deployment also passed anonymous HTTP checks; Compose and hosted behavior were verified independently.
 
 ## Design choices
 
@@ -78,7 +78,7 @@ On the real snapshot, all 744 hours match at the assumed 09:50 GMT cutoff. The o
 
 For the January 14 decision and January 15 midnight target, the selected 09:30 publication is 15,828 MW. The actual half-hours are 14,602 and 14,311 MW. Their mean is **14,456.5 MW**, making the signed error **+1,371.5 MW**. The first half-hour alone would give a different result and is not the canonical hourly comparison.
 
-These figures compare Elexon series that may represent different wind populations. I do not describe the positive bias as proven intrinsic model bias, a utility procurement shortfall or a financial loss. All three analytical views are implemented; production data packaging remains pending.
+These figures compare Elexon series that may represent different wind populations. I do not describe the positive bias as proven intrinsic model bias, a utility procurement shortfall or a financial loss. All three analytical views and production data packaging are implemented and publicly deployed.
 
 ## Decision Replay interface
 
@@ -110,10 +110,18 @@ The interface keeps the green/charcoal theme and existing shadcn/Tailwind compon
 
 ## Verification
 
-Current verification produced **112 passing backend tests and 50 passing frontend tests**, with no failures or skips. Backend tests cover ingestion, mathematical fixtures, before/equal/after cutoff, changed configuration, exact targets, incomplete actuals, zero generation, January 31→February 1, empty samples, percentile interpolation, typed API contracts, structured errors, read-only access and SQLite worker handoffs. Frontend tests cover date/input/button interactions, inclusive range filters, coordinated results, histogram and outlier navigation, actual chronological publication spacing, deadline equality, unchanged republications, missing/empty/zero states, discontinuous chart paths, keyboard/table selection, setup states, invalid contracts, reference mismatches, request cancellation, late responses, timeout and retry.
+Current verification produced **124 passing backend tests and 50 passing frontend tests**, with no failures or skips. Backend tests cover ingestion, mathematical fixtures, before/equal/after cutoff, changed configuration, exact targets, incomplete actuals, zero generation, January 31→February 1, empty samples, percentile interpolation, typed API contracts, structured errors, read-only access and SQLite worker handoffs. Frontend tests cover date/input/button interactions, inclusive range filters, coordinated results, histogram and outlier navigation, actual chronological publication spacing, deadline equality, unchanged republications, missing/empty/zero states, discontinuous chart paths, keyboard/table selection, setup states, invalid contracts, reference mismatches, request cancellation, late responses, timeout and retry.
 
 Ruff checks, TypeScript checking, the production build, Docker startup and the Vite/Nginx API proxies passed. The running page was checked at desktop and narrow-screen widths. One development test dependency emits a deprecation warning about its `httpx` integration.
 
 The Docker development reload workflow was checked with temporary source edits that were then restored. A React text change appeared in the open browser through hot module replacement without a page refresh. A Python change appeared in the API response through Uvicorn reload while the backend container identity remained unchanged.
 
-All three views were verified against the Elexon-derived snapshot through the existing Docker/Vite proxy at desktop and mobile widths. The next checkpoint is CI, production snapshot packaging and deployment verification.
+All three views were verified against the Elexon-derived snapshot through the existing Docker/Vite proxy at desktop and mobile widths. CI, snapshot packaging and both local production-serving arrangements are implemented. The public Vercel deployment passed anonymous HTTP smoke and browser checks of all three views. A hosted CI run remains pending until these changes are pushed.
+
+## Production preparation and release verification
+
+The release asset is a separate SQLite backup under `backend/snapshot/`, with a manifest containing both file and normalized-source checksums. Offline validation recomputes coverage, counts, scope and content identity; checks SQLite integrity; and rejects conflicts, incomplete coverage or mismatched provenance. Ingestion and validation share one fingerprint implementation. Numeric MW values are normalized to floats in the canonical representation so integer-valued fixtures survive SQLite round trips; the real source fingerprint is unchanged. Runtime requests continue to use read-only, per-request database connections. No startup ingestion or external data fetch was added.
+
+The production Docker stage validates and bundles this asset. CI executes backend/frontend regressions, source checks, the frontend build, offline snapshot validation and HTTP smoke tests for both the portable server and production Compose. The portable `index.py` entrypoint uses FastAPI’s frontend support to serve the compiled React files alongside the API; its `/api` welcome page leaves `/` for the product. API routes keep priority and missing asset/API paths remain errors. The snapshot cannot be served through the public frontend directory.
+
+Vercel configuration targets Python 3.14, Node 24 and the existing locked Python dependencies. The documented static-asset integration prepares CDN delivery for the public compiled frontend while analytical requests reach the Python function. The local portable-server check independently verifies application behavior, rather than treating a successful Docker build as proof of hosting. Production Docker HTTP smoke also verifies the Nginx API proxy and documentation routes. The new workflow is configured, not a claimed successful hosted run. The approved `windsight` project was published through a local-source CLI upload. Its stable domain is [windsight-five.vercel.app](https://windsight-five.vercel.app). The hosted install explicitly installs both locked Python dependencies and frontend packages, because a custom install command replaces the default dependency installation. The hosted build validated the snapshot and compiled React successfully. Anonymous smoke verified both compiled assets, all 744 comparisons, matching source identity, replay/evolution consistency, the February 1 boundary, documentation, expected errors and no downloadable database. Browser checks confirmed all three views. The deployment is manual; Git integration has not been configured.
