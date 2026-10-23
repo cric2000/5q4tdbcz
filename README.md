@@ -1,8 +1,8 @@
 # WindSight — Day-ahead wind intelligence
 
-**Current status: analytical APIs implemented and verified.** React, FastAPI, Docker and the reproducible Elexon-to-SQLite pipeline are present. APIs reconstruct decision-time forecasts and quantify errors across all January decision dates. Interactive dashboard views remain planned.
+**Current status: Decision Replay implemented and verified.** The React dashboard reconstructs decision-time forecasts, compares them with next-day actuals and displays daily accuracy using the FastAPI analytical services and reproducible Elexon-to-SQLite snapshot. Accuracy & Risk and Forecast Evolution screens remain planned.
 
-This pilot will help a GB electricity buyer reconstruct the latest wind forecast available before a day-ahead purchasing decision and evaluate its historical accuracy. Calculations will use only national Elexon WINDFOR forecasts and FUELHH WIND outturn. These series cannot determine purchase quantities or trading profit.
+This pilot helps a GB electricity buyer reconstruct the latest wind forecast available before a day-ahead purchasing decision and evaluate its historical accuracy. Calculations use only national Elexon WINDFOR forecasts and FUELHH WIND outturn. These series cannot determine purchase quantities or trading profit.
 
 ## Run locally with Docker
 
@@ -158,6 +158,30 @@ The [accuracy report](backend/data/accuracy-report.json) contains full-precision
 
 For example, the January 14 09:30 UTC publication forecast January 15 midnight at 15,828 MW. The two actual half-hours are 14,602 and 14,311 MW, giving an hourly mean of **14,456.5 MW** and signed error of **+1,371.5 MW**. Comparing only the first half-hour would produce a different, incorrect hourly error.
 
+## Use Decision Replay
+
+Open the [application](http://localhost:5173) after preparing the snapshot. The introduction explains the buyer’s problem and links directly to the workspace with “Review a buying day”. The workspace defaults to the first supported buying date. Select another January date or use the previous/next buttons; delivery labels, charts, daily metrics and the evidence table update together.
+
+- The dashed line shows the latest forecast available at the assumed decision cutoff. The solid line shows retrospective hourly actuals.
+- The main view explains the selected day and answers two questions: how far off the forecast was, and whether it was high or low on average. MW and the chart lines are explained beside the data.
+- Expand the hourly-differences chart for signed-error bars, “More accuracy measures” for MAE/bias/RMSE/P50/P90 definitions, and “View all 24 hourly readings” for the full table.
+- Select or focus a chart hour to inspect forecast, actual, signed error and publication time. Arrow keys move between chart hours; Home/End select the first/last. Table hour buttons select the same inspector.
+- The hourly evidence table exposes both actual half-hours, their mean, the chosen publication, forecast age and missing-data reasons. The mobile chart fits all 24 hours; the wide evidence table scrolls inside its panel.
+- Missing readings leave gaps; zero remains a valid value. Coverage stays visible, and a day with no matched pairs shows unavailable metrics with all expected rows retained.
+- “Where the numbers come from” explains the forecast and actual sources, with source links, the configured assumption, snapshot provenance and comparison limitations.
+
+The browser validates the API contracts and checks the result's snapshot/cutoff against loaded metadata. It cancels requests when switching dates, hides the previous day's results while loading, ignores late responses and provides retry actions for errors/timeouts. Valid incomplete snapshots can be explored; missing/invalid snapshots show a setup message. Accuracy & Risk and Forecast Evolution are labeled as coming next.
+
+To check the verified example, select **14 January 2026** and inspect **00:00 UTC** on January 15. To check the scope boundary, select **31 January 2026**: delivery must read **1 February 2026**, with 24 hours and the next-day button disabled.
+
+## Interface and design system
+
+The interface uses [shadcn/ui](https://ui.shadcn.com/docs/installation/vite) components with Radix primitives and [Tailwind CSS](https://tailwindcss.com/docs/installation/using-vite) through its Vite plugin. The green-and-charcoal workspace includes a clear product introduction, guided date/forecast/error steps, adjacent chart and explanations, keyboard-accessible accordions, tooltips, loading skeletons and responsive layouts. Lucide supplies icons. Component source lives in `frontend/src/components/ui`, with theme tokens in `src/styles.css` and shadcn configuration in `components.json`.
+
+The product explanation and buying-context help are available even while data is loading or the API is unavailable. The buying-context explanation is open by default. Source details, terminology, additional statistics and the full table can be expanded as needed. This historical pilot supports reviewing wind assumptions; it does not calculate a utility’s actual purchase quantity or provide live trading instructions.
+
+Adding this design system changes dependencies, so an existing Docker setup needs one rebuild with `docker compose up --build -d --wait`. Subsequent source/style changes continue to reload automatically. Exact package versions and the lockfile are tracked.
+
 ## Methodology and source provenance
 
 - **Scope:** React, Python and Docker; national Elexon wind forecasts and outturn; January 2026 purchase decisions and quantitative forecast accuracy.
@@ -171,7 +195,14 @@ For example, the January 14 09:30 UTC publication forecast January 15 midnight a
 ## Structure
 
 ```text
-frontend/                   React + TypeScript + Vite, connection states, Vitest
+frontend/                   React + TypeScript + Vite, Decision Replay, Vitest
+frontend/src/api.ts          Typed and validated setup/metadata/replay requests
+frontend/src/useResource.ts  Abortable requests, timeout/retry and stale-response protection
+frontend/src/DecisionReplay.tsx  Date controls, daily metrics, inspector and evidence table
+frontend/src/ReplayChart.tsx Responsive SVG forecast/actual lines and signed-error bars
+frontend/src/components/ui/ shadcn/ui components
+frontend/src/lib/utils.ts    Tailwind class merging
+frontend/components.json    shadcn registry/style configuration
 backend/app/api/            Operational/analytical routes and structured error handlers
 backend/app/core/           Validated environment configuration
 backend/app/schemas.py      Operational response contracts
@@ -207,7 +238,7 @@ npm run typecheck
 npm run build
 ```
 
-Current verification: **112 backend tests and 7 frontend tests passed**, with no failures or skips. Ruff, TypeScript checking, the frontend build, Docker startup and concurrent analytical requests through the frontend proxy passed. The backend test client emits one dependency deprecation warning for its `httpx` integration. CI and deployed end-to-end verification remain planned.
+Current verification: **112 backend tests and 32 frontend tests passed**, with no failures or skips. Ruff, TypeScript checking and the frontend production build passed. The live Decision Replay was checked through the Docker/Vite proxy at desktop and mobile widths, including the January 14 example and January 31→February 1 boundary. The backend test client emits one dependency deprecation warning for its `httpx` integration. CI and deployed end-to-end verification remain planned.
 
 ## Implementation status
 
@@ -217,7 +248,8 @@ Current verification: **112 backend tests and 7 frontend tests passed**, with no
 | Docker, tests, frontend build | Verified locally |
 | Live ingestion / SQLite / quality report | Implemented; full decision-window coverage verified |
 | As-of selection, hourly averaging, metrics and typed APIs | Implemented; fixtures and real-data calculations verified |
-| Decision Replay / Accuracy / Evolution | Planned |
+| Decision Replay | Implemented; real API chart, daily metrics, evidence table and request states verified |
+| Accuracy & Risk / Forecast Evolution screens | Planned; underlying APIs implemented |
 | CI and public hosting | Planned; no public application URL yet |
 
 ## AI assistance

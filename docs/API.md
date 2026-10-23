@@ -479,11 +479,11 @@ Missing analytical data within a valid snapshot is a successful HTTP 200 respons
 
 ## Suggested frontend request flow
 
-1. Existing landing page: fetch `/health` and `/config` for connectivity, setup status and the assumption label.
-2. Analytical dashboard: fetch `/metadata` for common provenance and methodology.
+1. Application setup: fetch `/health` and `/config` for connectivity, setup status and the assumption label.
+2. Decision Replay workspace: fetch `/metadata` for common provenance and methodology.
 3. Decision Replay: fetch `/decisions/{decision_date}` when the selected buying day changes.
-4. Accuracy view: fetch `/accuracy` and `/accuracy/daily` with the same decision-date filters.
-5. Evolution view: fetch `/evolution?target_time=...` for the chosen delivery hour.
-6. Data diagnostics: fetch `/data-quality` when showing coverage detail.
+4. Planned Accuracy view: fetch `/accuracy` and `/accuracy/daily` with the same decision-date filters.
+5. Planned Evolution view: fetch `/evolution?target_time=...` for the chosen delivery hour.
+6. Data diagnostics API: fetch `/data-quality` when showing coverage detail.
 
 Keep units, assumption disclosure and source-population limitations available in the UI even though they no longer repeat in each analytical result. Check result `meta` against cached metadata before combining responses.

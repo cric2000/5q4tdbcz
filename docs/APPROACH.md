@@ -1,6 +1,6 @@
 # My understanding and implementation approach
 
-**Current status: analytical APIs implemented and verified.** This document explains the technical choices, observed results and remaining dashboard work.
+**Current status: Decision Replay implemented and verified.** This document explains the technical choices, observed results and remaining dashboard work.
 
 ## What I understand the customer needs
 
@@ -32,11 +32,11 @@ I also recognize a comparison limitation: WINDFOR and FUELHH can represent diffe
 
 ## Application foundation
 
-I chose React/TypeScript/Vite and FastAPI with Pydantic settings. The API exposes service health, snapshot status and pilot configuration, with no data ingestion at startup. Configuration is returned by the API so the React page does not duplicate the deadline. The landing page distinguishes ready, missing, incomplete and invalid snapshots and marks all three analytical views as planned. Status text is derived during React rendering rather than synchronized through another Effect.
+I chose React/TypeScript/Vite and FastAPI with Pydantic settings. The API exposes service health, snapshot status and pilot configuration, with no data ingestion at startup. Configuration is returned by the API so the React page does not duplicate the deadline. The application distinguishes ready, missing, incomplete and invalid snapshots. Ready and valid incomplete snapshots open Decision Replay; the two secondary screens remain labeled as coming next. Status text is derived during React rendering rather than synchronized through another Effect.
 
 The API root serves a simple welcome page with a link to the interactive endpoint documentation at `/docs`.
 
-I use `WINDSIGHT_DECISION_CUTOFF_GMT`, validated as `HH:MM`, with a default of `09:50`. Docker reads `.env` through Compose; direct Uvicorn uses environment variables. I defer a user-editable deadline control, chart dependencies and a broader UI component library until a feature needs them.
+I use `WINDSIGHT_DECISION_CUTOFF_GMT`, validated as `HH:MM`, with a default of `09:50`. Docker reads `.env` through Compose; direct Uvicorn uses environment variables. I defer a user-editable deadline control and a broader UI component library. The 24-hour replay uses SVG without adding a chart dependency.
 
 For Docker I use Node 24 and Python 3.14. The default development configuration mounts source files and runs Vite hot module replacement alongside Uvicorn reload, so routine edits do not require an image rebuild. Vite proxies API requests to the backend service over the Docker network; direct host development defaults to loopback.
 
@@ -47,7 +47,7 @@ The explicit production configuration builds React and serves it through unprivi
 | Finding | Decision | Status / evidence |
 | --- | --- | --- |
 | Cutoff is an assumption | Central backend configuration and source-linked UI disclosure | Config and UI setup checks |
-| Health could be mistaken for analytical readiness | Report snapshot status separately; keep analytical views explicitly planned | Health and UI state tests |
+| Health could be mistaken for analytical readiness | Report snapshot status separately; validate analytical responses before rendering | Health, API contract and UI state tests |
 | Historical page needs no external API call at runtime | Keep ingestion offline and separate | Startup has no Elexon dependency |
 
 ## Ingestion decisions and observed evidence
@@ -78,14 +78,30 @@ On the real snapshot, all 744 hours match at the assumed 09:50 GMT cutoff. The o
 
 For the January 14 decision and January 15 midnight target, the selected 09:30 publication is 15,828 MW. The actual half-hours are 14,602 and 14,311 MW. Their mean is **14,456.5 MW**, making the signed error **+1,371.5 MW**. The first half-hour alone would give a different result and is not the canonical hourly comparison.
 
-These figures compare Elexon series that may represent different wind populations. I do not describe the positive bias as proven intrinsic model bias, a utility procurement shortfall or a financial loss. Dashboard presentation and production data packaging are still pending.
+These figures compare Elexon series that may represent different wind populations. I do not describe the positive bias as proven intrinsic model bias, a utility procurement shortfall or a financial loss. Replay presentation is implemented; the secondary dashboard screens and production data packaging remain pending.
+
+## Decision Replay interface
+
+The page starts with the buyer’s question, a brief purpose explanation and three steps. One restricted buying-date control drives a plain-language daily summary, next-day labels, forecast/actual lines, two primary measures and the optional detailed views. The main measures explain the average gap and its direction. Signed-error bars, additional accuracy statistics and the 24-row evidence table sit in expandable sections, with definitions beside the numbers. I keep the configured deadline, retrospective nature of actuals and data coverage visible. The verified January 14 midnight example appears as 15,828 MW forecast, 14,456.5 MW actual and +1,371.5 MW error. January 31 shows February 1 delivery and prevents advancing outside the scope.
+
+I render hourly comparisons with SVG: dashed forecast and solid actual lines distinguish series beyond color, error direction uses a labeled zero baseline, and missing observations restart paths rather than joining across gaps. Valid zero values are drawn. Every chart hour can be inspected by pointer or keyboard, with arrow/Home/End navigation and the same selection available from table buttons. The expandable table supplies full numerical evidence, including both actual half-hours, selected publication time and age at the decision deadline. The hour inspector also describes the selected difference in words, and the graph explains MW and the two lines without requiring technical terminology. On narrow screens the chart switches to a compact layout showing all 24 hours, with fewer time ticks and readable labels. The full evidence table scrolls inside its panel. A media-query subscription uses React’s external-store hook so viewport changes do not trigger data refetching.
+
+Effects only synchronize network requests with mounted views. The selected date and selected hour are local interaction state; labels, paths and KPI values derive directly from props during render. A shared request hook aborts on unmount/date changes, clears timeout handles, ignores stale responses and supports direct retry actions. Changing date unmounts the old result view so its metrics and chart cannot appear under a new date while loading.
+
+The client validates the fields it consumes, including the 24 exact target hours and D→D+1 mapping. Metadata loads once per analytical workspace. A snapshot or cutoff mismatch blocks rendering and offers a metadata refresh, avoiding results paired with another policy's explanation. No calculations are duplicated in React, and no synthetic fallback data is used in the application. Synthetic response fixtures live only in the test directory.
+
+## Interface redesign
+
+I use shadcn/ui components generated from the official registry, backed by Radix, with Tailwind CSS 4.3.3 and its Vite integration. Shared components include Button, Card, Badge, Input, Accordion, Alert, Tooltip, Separator and Skeleton. Theme tokens define a green/charcoal palette with a contrasting blue-grey actual-generation series, while Tailwind utilities handle layout and responsive behavior. Custom CSS is limited to base rules and SVG chart styling. Lucide icons are bundled with the application.
+
+The first screen states the use case and the two core benefits: the latest forecast available at the deadline and measured historical differences. A primary anchor leads to the date controls. Desktop places the chart beside its interpretation; mobile stacks the numbered steps and fits the full day in one plot. The business-context accordion starts open, and deeper evidence remains optional. Statistics and data requests retain their existing definitions and cancellation safeguards. Dependencies are pinned, and Docker was rebuilt once to include them.
 
 ## Verification
 
-Current verification produced **112 passing backend tests and 7 passing frontend tests**, with no failures or skips. Tests cover ingestion, mathematical fixtures, before/equal/after cutoff, changed configuration, exact targets, incomplete actuals, zero generation, January 31→February 1, empty samples, percentile interpolation, typed API contracts, structured errors, read-only access and SQLite worker handoffs. The existing frontend state tests continue to pass.
+Current verification produced **112 passing backend tests and 32 passing frontend tests**, with no failures or skips. Backend tests cover ingestion, mathematical fixtures, before/equal/after cutoff, changed configuration, exact targets, incomplete actuals, zero generation, January 31→February 1, empty samples, percentile interpolation, typed API contracts, structured errors, read-only access and SQLite worker handoffs. Frontend tests cover date/input/button interactions, coordinated results, missing/empty/zero states, discontinuous chart paths, keyboard/table selection, setup states, invalid contracts, reference mismatches, request cancellation, late responses, timeout and retry.
 
 Ruff checks, TypeScript checking, the production build, Docker startup and the Vite/Nginx API proxies passed. The running page was checked at desktop and narrow-screen widths. One development test dependency emits a deprecation warning about its `httpx` integration.
 
 The Docker development reload workflow was checked with temporary source edits that were then restored. A React text change appeared in the open browser through hot module replacement without a page refresh. A Python change appeared in the API response through Uvicorn reload while the backend container identity remained unchanged.
 
-Twenty-four concurrent analytical requests through the frontend proxy passed, and both Docker services are healthy. The next technical work is the primary Decision Replay frontend: a January decision picker, real forecast/actual chart, daily metrics, publication details, accessible table and loading/error/missing states.
+The live Replay was verified against the Elexon-derived snapshot through the existing Docker/Vite proxy at desktop and mobile widths. The next technical work is the secondary Accuracy & Risk and Forecast Evolution screens; their analytical APIs already exist.
