@@ -15,6 +15,7 @@ from app.analysis_schemas import (
     ForecastPublication,
     HourlyComparison,
     IngestionQuality,
+    PriorAccuracyResponse,
     SnapshotDescription,
     SourceDescription,
 )
@@ -52,7 +53,9 @@ class AnalysisService:
             limitations=[
                 "The cutoff is an N2EX reference assumption, not a confirmed client deadline.",
                 "WINDFOR and FUELHH may cover different populations; errors compare the series.",
-                "Actuals are retrospective and were not available at the buying cutoff.",
+                "Actuals for next-day delivery were not available at that buying cutoff.",
+                "Prior accuracy uses only completed hours and stored actual publications "
+                "available by the selected cutoff; earlier actual vintages are not reconstructed.",
                 "No purchase quantities, financial losses or predictive guarantees are inferred.",
                 "Revision history is limited to the stated acquisition publication window.",
                 "Unchanged republications do not establish a new forecasting model run.",
@@ -69,7 +72,9 @@ class AnalysisService:
         if start < self.scope.decision_start or end > self.scope.decision_end:
             raise InvalidAnalysisRequest("Decision dates must be within January 1–31, 2026.")
 
-    def comparisons(self, start: date, end: date) -> list[HourlyComparison]:
+    def comparisons(
+        self, start: date, end: date, *, known_at: datetime | None = None
+    ) -> list[HourlyComparison]:
         self.validate_range(start, end)
         first = datetime.combine(start + timedelta(days=1), time(), UTC)
         last = datetime.combine(end + timedelta(days=2), time(), UTC)
@@ -78,12 +83,15 @@ class AnalysisService:
         for row in self.repository.forecasts(first, last):
             forecasts_by_day[row.target_time.date()].append(row)
         for row in self.repository.outturn(first, last):
-            actuals_by_day[row.target_time.date()].append(row)
+            if known_at is None or row.publish_time <= known_at:
+                actuals_by_day[row.target_time.date()].append(row)
         result = []
         day = start
         while day <= end:
             delivery = day + timedelta(days=1)
             targets = [datetime.combine(delivery, time(hour=hour), UTC) for hour in range(24)]
+            if known_at is not None:
+                targets = [target for target in targets if target + timedelta(hours=1) <= known_at]
             result.extend(
                 compare_hours(
                     targets,
@@ -117,6 +125,25 @@ class AnalysisService:
             metrics=metrics(hours),
             error_histogram=error_histogram(hours),
             worst_hours=worst,
+        )
+
+    def prior_accuracy(self, decision_date: date) -> PriorAccuracyResponse:
+        self.validate_range(decision_date, decision_date)
+        cutoff = self.scope.cutoff(decision_date)
+        hours = (
+            self.comparisons(
+                self.scope.decision_start, decision_date - timedelta(days=1), known_at=cutoff
+            )
+            if decision_date > self.scope.decision_start
+            else []
+        )
+        return PriorAccuracyResponse(
+            meta=self.meta,
+            decision_date=decision_date,
+            cutoff=cutoff,
+            delivery_start=hours[0].target_time if hours else None,
+            delivery_end=hours[-1].target_time + timedelta(hours=1) if hours else None,
+            metrics=metrics(hours),
         )
 
     def daily(self, start: date, end: date) -> DailyAccuracyResponse:

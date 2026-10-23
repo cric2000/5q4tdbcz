@@ -392,6 +392,39 @@ function invalidAnalysis(label: string): never {
   );
 }
 
+export interface PriorAccuracy {
+  meta: AnalysisReference;
+  decision_date: string;
+  cutoff: string;
+  delivery_start: string | null;
+  delivery_end: string | null;
+  metrics: Metrics;
+}
+
+/** The server filters both delivery completion and actual-publication availability. */
+export async function loadPriorAccuracy(key: string, signal: AbortSignal): Promise<PriorAccuracy> {
+  const [date, deliveryStart, cutoffTime] = key.split('|');
+  const value = await getJson(
+    `/api/v1/decisions/${encodeURIComponent(date)}/prior-accuracy`,
+    signal,
+  );
+  const cutoff = `${date}T${cutoffTime}:00Z`;
+  const start = `${deliveryStart}T00:00:00Z`;
+  const expected = Math.max(0, Math.floor((Date.parse(cutoff) - Date.parse(start)) / 3600000));
+  const end = new Date(Date.parse(start) + expected * 3600000).toISOString().replace('.000Z', 'Z');
+  if (
+    !isRecord(value) ||
+    !validReference(value.meta) ||
+    value.decision_date !== date ||
+    value.cutoff !== cutoff ||
+    value.delivery_start !== (expected ? start : null) ||
+    value.delivery_end !== (expected ? end : null) ||
+    !metricsForHours(value.metrics, expected)
+  )
+    invalidAnalysis('historical accuracy');
+  return value as unknown as PriorAccuracy;
+}
+
 /** Both range results must describe the same snapshot and cutoff before either is displayed. */
 export async function loadAccuracyRange(
   key: string,

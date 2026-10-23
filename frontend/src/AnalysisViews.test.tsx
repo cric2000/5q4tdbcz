@@ -9,6 +9,7 @@ import {
   evolution,
   health,
   metadata,
+  priorAccuracy,
   response,
 } from './test/fixtures';
 
@@ -18,6 +19,8 @@ function api(overrides: Record<string, unknown> = {}) {
     if (path === '/api/v1/health') return Promise.resolve(response(health));
     if (path === '/api/v1/config') return Promise.resolve(response(config));
     if (path === '/api/v1/metadata') return Promise.resolve(response(metadata));
+    if (path.endsWith('/prior-accuracy'))
+      return Promise.resolve(response(priorAccuracy(path.split('/').at(-2))));
     if (path.startsWith('/api/v1/decisions/'))
       return Promise.resolve(response(decision(path.split('/').at(-1))));
     const url = new URL(path, 'http://localhost');
@@ -30,6 +33,7 @@ function api(overrides: Record<string, unknown> = {}) {
 async function open(view: 'Accuracy & risk' | 'Forecast evolution', fetch = api()) {
   vi.stubGlobal('fetch', fetch);
   render(<App />);
+  fireEvent.click(await screen.findByText('Explore more evidence'));
   fireEvent.click(screen.getByRole('button', { name: view }));
   return fetch;
 }
@@ -158,7 +162,7 @@ describe('Accuracy & risk', () => {
         '/api/v1/accuracy/daily?from=2026-01-01&to=2026-01-31': empty.daily,
       }),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Decision replay' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back to buying overview' }));
     fireEvent.click(screen.getByRole('button', { name: 'Accuracy & risk' }));
     expect(await screen.findByText('No complete hourly comparisons.')).toBeVisible();
     expect(screen.getByText('No matched hours to rank.')).toBeVisible();
@@ -217,6 +221,57 @@ describe('Forecast evolution', () => {
     );
     expect(screen.getByRole('button', { name: 'Previous publication' })).toBeDisabled();
     expect(fetch).toHaveBeenCalledTimes(count);
+  });
+
+  it('reveals inspected publications without changing the buying-time forecast or refetching', async () => {
+    const fetch = await open('Forecast evolution');
+    const details = await screen.findByRole('region', { name: 'Selected publication details' });
+    const scroll = vi.fn();
+    details.scrollIntoView = scroll;
+    const buyingValue = screen.getByRole('heading', {
+      name: 'Available at the buying deadline',
+    }).nextElementSibling;
+    const count = fetch.mock.calls.length;
+    fireEvent.click(
+      screen.getByRole('button', { name: 'All publications and deadline eligibility' }),
+    );
+    const table = screen.getByRole('table', { name: 'Forecast publication history' });
+    expect(within(table).getAllByRole('columnheader')).toHaveLength(4);
+    const action = screen.getByRole('button', {
+      name: 'Inspect stored publication 01 Jan, 08:00 UTC',
+    });
+    fireEvent.click(action);
+    expect(details).toHaveFocus();
+    expect(scroll).toHaveBeenCalledWith({ block: 'center', behavior: 'auto' });
+    expect(within(details).getByText('01 Jan, 08:00 UTC')).toBeVisible();
+    expect(within(details).getByText('100 MW')).toBeVisible();
+    expect(buyingValue).toHaveTextContent('120 MW');
+    // Re-inspecting the selected row must still reveal its details.
+    fireEvent.click(action);
+    expect(scroll).toHaveBeenCalledTimes(2);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Inspect stored publication 01 Jan, 12:45 UTC' }),
+    );
+    expect(details).toHaveFocus();
+    expect(within(details).getByText('After the deadline · excluded')).toBeVisible();
+    expect(buyingValue).toHaveTextContent('120 MW');
+    expect(fetch).toHaveBeenCalledTimes(count);
+  });
+
+  it('keeps arrow navigation in the timeline and reveals details on explicit activation', async () => {
+    await open('Forecast evolution');
+    const details = await screen.findByRole('region', { name: 'Selected publication details' });
+    const scroll = vi.fn();
+    details.scrollIntoView = scroll;
+    const point = screen.getByRole('button', { name: /Inspect publication 01 Jan, 10:15 UTC/ });
+    point.focus();
+    fireEvent.keyDown(point, { key: 'ArrowRight' });
+    const next = screen.getByRole('button', { name: /Inspect publication 01 Jan, 12:45 UTC/ });
+    expect(next).toHaveFocus();
+    expect(scroll).not.toHaveBeenCalled();
+    fireEvent.keyDown(next, { key: 'Enter' });
+    expect(details).toHaveFocus();
+    expect(scroll).toHaveBeenCalledTimes(1);
   });
 
   it('maps the final January buying day to February delivery and respects the target-hour boundary', async () => {
@@ -382,5 +437,54 @@ describe('Analysis integrity and edge cases', () => {
         .getByRole('img', { name: /How often the forecast was high or low/ })
         .querySelector('.error-under'),
     ).toBeInTheDocument();
+  });
+});
+
+describe('buyer workflow across views', () => {
+  it('opens publication history for the hour selected in replay', async () => {
+    const fetch = api();
+    vi.stubGlobal('fetch', fetch);
+    render(<App />);
+    await screen.findByRole('button', {
+      name: 'Why this forecast?',
+    });
+    fireEvent.change(screen.getByLabelText('Buying decision date'), {
+      target: { value: '2026-01-14' },
+    });
+    await screen.findByText('Wind forecast for 15 Jan 2026');
+    const beforeHourChange = fetch.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Next forecast hour' }));
+    const inspector = screen.getByRole('region', {
+      name: 'Buying-time forecast',
+    });
+    expect(within(inspector).getByText('01:00–02:00 UTC')).toBeVisible();
+    expect(fetch).toHaveBeenCalledTimes(beforeHourChange);
+    fireEvent.click(screen.getByRole('button', { name: 'Why this forecast?' }));
+    expect(await screen.findByRole('region', { name: 'Forecast evolution results' })).toBeVisible();
+    expect(screen.getByLabelText('Delivery day')).toHaveValue('2026-01-15');
+    expect(screen.getByLabelText('Delivery hour · UTC / GMT')).toHaveValue('01');
+    expect(
+      fetch.mock.calls.some(
+        ([path]) => path === '/api/v1/evolution?target_time=2026-01-15T01%3A00%3A00Z',
+      ),
+    ).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Back to buying overview' }));
+    expect(await screen.findByRole('region', { name: 'Buying-time forecast' })).toHaveTextContent(
+      '01:00–02:00 UTC',
+    );
+    expect(screen.getByLabelText('Buying decision date')).toHaveValue('2026-01-14');
+  });
+
+  it('moves from one buying day to a range review without treating daily error as overall reliability', async () => {
+    vi.stubGlobal('fetch', api());
+    render(<App />);
+    const action = await screen.findByRole('button', {
+      name: 'Explore historical accuracy',
+    });
+    expect(screen.getByRole('region', { name: 'Historical reliability' })).toBeVisible();
+    fireEvent.click(action);
+    expect(await screen.findByText('744 / 744 hours compared')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Back to buying overview' })).toBeVisible();
+    expect(screen.getByRole('note', { name: 'How to use this accuracy review' })).toBeVisible();
   });
 });

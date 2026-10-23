@@ -1,7 +1,16 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import App from './App';
-import { config, decision, emptyDecision, health, metadata, response } from './test/fixtures';
+import {
+  accuracyRange,
+  config,
+  decision,
+  emptyDecision,
+  health,
+  metadata,
+  priorAccuracy,
+  response,
+} from './test/fixtures';
 
 function api(overrides: Record<string, unknown> = {}) {
   return vi.fn().mockImplementation((path: string) => {
@@ -10,6 +19,10 @@ function api(overrides: Record<string, unknown> = {}) {
       '/api/v1/config': config,
       '/api/v1/metadata': metadata,
     };
+    if (path.startsWith('/api/v1/accuracy?') && !Object.hasOwn(overrides, path))
+      return Promise.resolve(response(accuracyRange().overall));
+    if (path.endsWith('/prior-accuracy') && !Object.hasOwn(overrides, path))
+      return Promise.resolve(response(priorAccuracy(path.split('/').at(-2))));
     const value = Object.hasOwn(overrides, path)
       ? overrides[path]
       : (defaults[path] ?? decision(path.split('/').at(-1)));
@@ -19,6 +32,11 @@ function api(overrides: Record<string, unknown> = {}) {
 const dateInput = () => screen.getByLabelText('Buying decision date');
 const metrics = () => screen.getByRole('region', { name: 'Daily accuracy metrics' });
 async function openEvidence() {
+  await screen.findByRole('button', { name: 'Review this day after delivery' });
+  const compare = screen.queryByRole('button', { name: 'Compare with actual generation' });
+  if (compare) fireEvent.click(compare);
+  const day = await screen.findByRole('button', { name: 'Review this day after delivery' });
+  if (day.getAttribute('aria-expanded') !== 'true') fireEvent.click(day);
   const toggle = await screen.findByRole('button', { name: /View all 24 hourly readings/ });
   if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle);
   return screen.findByRole('table');
@@ -48,8 +66,8 @@ describe('Decision Replay', () => {
     await openEvidence();
     fireEvent.change(dateInput(), { target: { value: '2026-01-02' } });
     await screen.findByText('03 Jan 2026');
-    await waitFor(() => expect(within(metrics()).getAllByText('890')).toHaveLength(2));
     await openEvidence();
+    await waitFor(() => expect(within(metrics()).getAllByText('890')).toHaveLength(2));
     expect(
       screen.getByRole('button', { name: /00:00 UTC: forecast 1,000 MW, actual 110 MW/ }),
     ).toBeInTheDocument();
@@ -277,6 +295,22 @@ describe('Decision Replay', () => {
   });
 });
 
+it('reveals the selected hour when an hourly evidence row is inspected', async () => {
+  const fetch = api();
+  vi.stubGlobal('fetch', fetch);
+  render(<App />);
+  await openEvidence();
+  const details = screen.getByRole('region', { name: 'Selected hour details' });
+  const scroll = vi.fn();
+  details.scrollIntoView = scroll;
+  const count = fetch.mock.calls.length;
+  fireEvent.click(screen.getByRole('button', { name: 'Inspect 23:00 UTC' }));
+  await waitFor(() => expect(details).toHaveFocus());
+  expect(scroll).toHaveBeenCalledWith({ block: 'center', behavior: 'auto' });
+  expect(within(details).getByText('23:00–00:00 UTC')).toBeVisible();
+  expect(fetch).toHaveBeenCalledTimes(count);
+});
+
 describe('setup and metadata states', () => {
   it.each(['not_ingested', 'snapshot_invalid'])(
     'keeps analytical requests out of the %s setup state',
@@ -333,147 +367,206 @@ describe('setup and metadata states', () => {
   });
 });
 
-describe('plain-language guidance', () => {
-  it('explains the purpose and units, answers two main questions and keeps technical evidence collapsed', async () => {
-    vi.stubGlobal('fetch', api());
-    render(<App />);
-    await screen.findByText(
-      'The forecast was higher than reported generation in every compared hour.',
-    );
-    expect(screen.getByRole('heading', { name: /Understand wind forecasts/ })).toBeInTheDocument();
-    expect(
-      screen.getByText(/See the latest wind forecast available at your buying deadline/),
-    ).toBeVisible();
-    expect(screen.getByText('MW (megawatts) measures power')).toBeVisible();
-    expect(within(metrics()).getAllByRole('article')).toHaveLength(2);
-    expect(screen.getByText('Higher on average')).toBeVisible();
-    expect(screen.getByRole('button', { name: /More accuracy measures/ })).toHaveAttribute(
-      'aria-expanded',
-      'false',
-    );
-    expect(screen.getByRole('button', { name: /View all 24 hourly readings/ })).toHaveAttribute(
-      'aria-expanded',
-      'false',
-    );
-    expect(
-      screen.getByRole('button', { name: 'See how much the forecast missed each hour' }),
-    ).toHaveAttribute('aria-expanded', 'false');
-    expect(
-      screen.queryByText('Root mean square error gives large differences more weight.', {
-        exact: false,
-      }),
-    ).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /More accuracy measures/ }));
-    expect(
-      screen.getByText('Root mean square error gives large differences more weight.', {
-        exact: false,
-      }),
-    ).toBeVisible();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'See how much the forecast missed each hour' }),
-    );
-    expect(screen.getByText(/Bars above zero mean the forecast was too high/)).toBeVisible();
-  });
-
-  it('explains the selected hour’s difference in words and follows table selection', async () => {
-    const value = decision();
-    value.hours[1] = { ...value.hours[1], forecast_mw: 90, error_mw: -20, absolute_error_mw: 20 };
-    value.metrics = {
-      ...value.metrics,
-      mae_mw: 250 / 24,
-      rmse_mw: Math.sqrt(2700 / 24),
-      bias_mw: 210 / 24,
-      max_absolute_error_mw: 20,
-      overforecast_hours: 23,
-      underforecast_hours: 1,
-      overforecast_percent: (100 * 23) / 24,
-      underforecast_percent: 100 / 24,
-    };
-    vi.stubGlobal('fetch', api({ '/api/v1/decisions/2026-01-01': value }));
-    render(<App />);
-    await openEvidence();
-    expect(
-      screen.getByText(/higher than reported generation in 23 hours and lower in 1 hour/),
-    ).toBeVisible();
-    expect(screen.getByText('10 MW lower than forecast')).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Inspect 01:00 UTC' }));
-    expect(screen.getByText('20 MW higher than forecast')).toBeVisible();
-  });
-
-  it('does not imply an accurate day merely because high and low errors cancel out', async () => {
-    const value = decision();
-    value.metrics.bias_mw = 0;
-    value.metrics.overforecast_hours = 12;
-    value.metrics.underforecast_hours = 12;
-    value.metrics.overforecast_percent = 50;
-    value.metrics.underforecast_percent = 50;
-    value.hours = value.hours.map((hour, index) =>
-      index < 12 ? { ...hour, forecast_mw: 100, error_mw: -10 } : hour,
-    );
-    vi.stubGlobal('fetch', api({ '/api/v1/decisions/2026-01-01': value }));
-    render(<App />);
-    await screen.findByText('No average direction');
-    expect(
-      screen.getByText(
-        'High and low differences balance on average. Individual hours may still differ.',
-      ),
-    ).toBeVisible();
-    expect(
-      screen.getByText(/higher than reported generation in 12 hours and lower in 12 hours/),
-    ).toBeVisible();
-  });
-});
-
-describe('guided shadcn workspace', () => {
-  it('explains the product and provides a clear starting action before the API responds', () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() => new Promise(() => {})),
-    );
-    render(<App />);
-    expect(screen.getByRole('heading', { name: /Understand wind forecasts/ })).toBeVisible();
-    expect(
-      screen.getByText(/See the latest wind forecast available at your buying deadline/),
-    ).toBeVisible();
-    expect(screen.getByRole('link', { name: 'Review a buying day' })).toHaveAttribute(
-      'href',
-      '#replay-workspace',
-    );
-    expect(screen.getByRole('link', { name: 'How does this help?' })).toHaveAttribute(
-      'href',
-      '#how-it-works',
-    );
-    expect(screen.getByText('Explore January 2026 decisions with historical data')).toBeVisible();
-    expect(
-      screen.getByRole('button', { name: 'How does this help with a buying decision?' }),
-    ).toHaveAttribute('aria-expanded', 'true');
-    expect(document.getElementById('how-it-works')).toBeInTheDocument();
-  });
-
-  it('provides expandable business context, source links and term definitions without refetching', async () => {
+describe('buyer overview', () => {
+  it('answers the forecast and historical-gap questions without opening a separate view', async () => {
     const fetch = api();
     vi.stubGlobal('fetch', fetch);
     render(<App />);
-    await screen.findByText(
-      'The forecast was higher than reported generation in every compared hour.',
+    const forecast = await screen.findByRole('region', { name: 'Buying-time forecast' });
+    const context = screen.getByRole('region', { name: 'Historical reliability' });
+    await waitFor(() =>
+      expect(within(context).getByText('Insufficient earlier history')).toBeVisible(),
     );
-    const count = fetch.mock.calls.length;
+    expect(within(forecast).getByText('120 MW')).toBeVisible();
+    expect(screen.getByRole('group', { name: /Hourly wind forecast available/ })).toBeVisible();
+    expect(document.querySelector('.actual-line')).not.toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'How does this help with a buying decision?' }),
-    ).toHaveAttribute('aria-expanded', 'true');
+      screen.queryByRole('region', { name: 'Daily accuracy metrics' }),
+    ).not.toBeInTheDocument();
+    expect(within(context).queryByText('0 MW')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Review this day after delivery' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    fireEvent.change(dateInput(), { target: { value: '2026-01-14' } });
+    const contextAfterChange = await screen.findByRole('region', {
+      name: 'Historical reliability',
+    });
+    await waitFor(() => expect(contextAfterChange).toHaveTextContent('298 / 298 hours compared'));
+    expect(within(contextAfterChange).getByText('10 MW')).toBeVisible();
+    expect(contextAfterChange).toHaveTextContent('Evidence available by 14 Jan, 10:15 UTC');
+    expect(contextAfterChange).toHaveTextContent('both actual readings published by this deadline');
+    expect(fetch.mock.calls.filter(([path]) => path.endsWith('/prior-accuracy'))).toHaveLength(2);
+    expect(fetch.mock.calls.some(([path]) => path.startsWith('/api/v1/accuracy?'))).toBe(false);
+  });
+
+  it('keeps the forecast usable if historical accuracy fails and offers a separate retry', async () => {
+    const fetch = api({ '/api/v1/decisions/2026-01-01/prior-accuracy': {} });
+    vi.stubGlobal('fetch', fetch);
+    render(<App />);
+    expect(await screen.findByRole('button', { name: 'Retry historical accuracy' })).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Buying-time forecast' })).toHaveTextContent(
+      '120 MW',
+    );
+    const replayCalls = fetch.mock.calls.filter(
+      ([path]) => path.startsWith('/api/v1/decisions/') && !path.endsWith('/prior-accuracy'),
+    ).length;
+    fetch.mockImplementation(api());
+    fireEvent.click(screen.getByRole('button', { name: 'Retry historical accuracy' }));
+    await waitFor(() =>
+      expect(screen.getByRole('region', { name: 'Historical reliability' })).toHaveTextContent(
+        'Insufficient earlier history',
+      ),
+    );
+    expect(
+      fetch.mock.calls.filter(
+        ([path]) => path.startsWith('/api/v1/decisions/') && !path.endsWith('/prior-accuracy'),
+      ),
+    ).toHaveLength(replayCalls);
+  });
+
+  it('blocks reliability from a different snapshot while leaving the eligible forecast visible', async () => {
+    const value = priorAccuracy();
+    value.meta.snapshot_id = 'b'.repeat(64);
+    const fetch = api({ '/api/v1/decisions/2026-01-01/prior-accuracy': value });
+    vi.stubGlobal('fetch', fetch);
+    render(<App />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('accuracy reference does not match');
+    expect(screen.getByRole('region', { name: 'Buying-time forecast' })).toHaveTextContent(
+      '120 MW',
+    );
+    fetch.mockImplementation(api());
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh overview' }));
+    await waitFor(() =>
+      expect(screen.getByRole('region', { name: 'Historical reliability' })).toHaveTextContent(
+        'Insufficient earlier history',
+      ),
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('hides old accuracy while changing buying dates and ignores abandoned responses', async () => {
+    let finishOld: (value: unknown) => void = () => {};
+    const fetch = api();
+    fetch.mockImplementation((path: string, options: RequestInit) =>
+      path === '/api/v1/decisions/2026-01-15/prior-accuracy'
+        ? new Promise((resolve) => {
+            finishOld = resolve;
+          })
+        : api()(path, options),
+    );
+    vi.stubGlobal('fetch', fetch);
+    render(<App />);
+    fireEvent.change(await screen.findByLabelText('Buying decision date'), {
+      target: { value: '2026-01-14' },
+    });
+    await screen.findByText('10 MW');
+    fireEvent.change(dateInput(), { target: { value: '2026-01-15' } });
+    await screen.findByText('Loading historical accuracy…');
+    expect(screen.queryByText('10 MW')).not.toBeInTheDocument();
+    fireEvent.change(dateInput(), { target: { value: '2026-01-16' } });
+    await screen.findByText(/346 \/ 346 hours compared/);
+    expect(
+      fetch.mock.calls.find(([path]) => path === '/api/v1/decisions/2026-01-15/prior-accuracy')?.[1]
+        .signal.aborted,
+    ).toBe(true);
+    await act(async () => finishOld(response(priorAccuracy('2026-01-15', 10000))));
+    expect(screen.queryByText('9,890 MW')).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Historical reliability' })).toHaveTextContent(
+      'Evidence available by 16 Jan, 10:15 UTC',
+    );
+  });
+
+  it.each(['cutoff', 'delivery_end'])(
+    'rejects a historical summary with a future or incorrect %s',
+    async (field) => {
+      const value = priorAccuracy('2026-01-14');
+      value[field as 'cutoff' | 'delivery_end'] = '2026-01-15T12:00:00Z';
+      vi.stubGlobal('fetch', api({ '/api/v1/decisions/2026-01-14/prior-accuracy': value }));
+      render(<App />);
+      fireEvent.change(await screen.findByLabelText('Buying decision date'), {
+        target: { value: '2026-01-14' },
+      });
+      expect(
+        await screen.findByRole('button', { name: 'Retry historical accuracy' }),
+      ).toBeVisible();
+      expect(screen.queryByText('10 MW')).not.toBeInTheDocument();
+    },
+  );
+
+  it('selects and reveals a forecast from the chart without exposing retrospective actuals or refetching', async () => {
+    const fetch = api();
+    vi.stubGlobal('fetch', fetch);
+    render(<App />);
+    const chart = await screen.findByRole('group', { name: /Hourly wind forecast available/ });
+    const count = fetch.mock.calls.length;
+    const point = within(chart).getByRole('button', { name: '03:00 UTC: forecast 120 MW' });
+    fireEvent.click(point);
+    const forecast = screen.getByRole('region', { name: 'Buying-time forecast' });
+    expect(forecast).toHaveTextContent('03:00–04:00 UTC');
+    expect(forecast).toHaveFocus();
+    expect(document.querySelector('.actual-line')).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Selected hour details' })).not.toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(count);
+  });
+
+  it.each([
+    [110, 'High and low differences balanced on average', '0 MW'],
+    [100, 'Forecasts were lower on average', '10 MW'],
+  ])(
+    'explains the historical direction honestly when forecast is %s MW',
+    async (forecast, direction, gap) => {
+      vi.stubGlobal(
+        'fetch',
+        api({
+          '/api/v1/decisions/2026-01-14/prior-accuracy': priorAccuracy(
+            '2026-01-14',
+            forecast as number,
+          ),
+        }),
+      );
+      render(<App />);
+      fireEvent.change(await screen.findByLabelText('Buying decision date'), {
+        target: { value: '2026-01-14' },
+      });
+      expect(await screen.findByText(direction as string)).toBeVisible();
+      const context = screen.getByRole('region', { name: 'Historical reliability' });
+      expect(within(context).getByText(gap as string)).toBeVisible();
+    },
+  );
+
+  it('shows unavailable historical accuracy rather than a zero when comparisons are missing', async () => {
+    const value = priorAccuracy('2026-01-14');
+    value.metrics = emptyDecision().metrics;
+    value.metrics.coverage.expected_hours = 298;
+    value.metrics.coverage.missing_forecast_hours = 298;
+    value.metrics.coverage.incomplete_actual_hours = 298;
+    vi.stubGlobal('fetch', api({ '/api/v1/decisions/2026-01-14/prior-accuracy': value }));
+    render(<App />);
+    fireEvent.change(await screen.findByLabelText('Buying decision date'), {
+      target: { value: '2026-01-14' },
+    });
     expect(
       await screen.findByText(
-        /Customer demand, existing contracts and the renewable supply available to your utility/,
+        'No complete forecast and actual pairs were available by this buying deadline.',
       ),
     ).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Where the numbers come from' }));
-    expect(await screen.findByRole('link', { name: 'Elexon WINDFOR' })).toHaveAttribute(
-      'href',
-      metadata.sources[0].documentation_url,
+    const context = screen.getByRole('region', { name: 'Historical reliability' });
+    expect(context).toHaveTextContent('Insufficient earlier history');
+    expect(within(context).queryByText('0 MW')).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Buying-time forecast' })).toHaveTextContent(
+      '120 MW',
     );
-    expect(screen.getByRole('link', { name: 'Elexon FUELHH WIND' })).toHaveAttribute(
-      'href',
-      metadata.sources[1].documentation_url,
+  });
+
+  it('reveals actuals on request and explains units through optional help', async () => {
+    vi.stubGlobal('fetch', api());
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Compare with actual generation' }));
+    expect(document.querySelector('.actual-line')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Selected hour details' })).toHaveTextContent(
+      'Known only after delivery',
     );
     fireEvent.click(
       screen.getByRole('button', { name: 'What do forecast, actual, MW and deadline mean?' }),
@@ -481,22 +574,6 @@ describe('guided shadcn workspace', () => {
     expect(
       await screen.findByText(/A measure of power. Higher MW means more electricity/),
     ).toBeVisible();
-    expect(fetch).toHaveBeenCalledTimes(count);
-  });
-
-  it('offers simple hour navigation with correct boundaries and no extra API request', async () => {
-    const fetch = api();
-    vi.stubGlobal('fetch', fetch);
-    render(<App />);
-    await openEvidence();
-    const count = fetch.mock.calls.length;
-    expect(screen.getByRole('button', { name: 'Previous delivery hour' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: 'Next delivery hour' }));
-    expect(screen.getByText('01:00–02:00 UTC')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Previous delivery hour' })).toBeEnabled();
-    fireEvent.click(screen.getByRole('button', { name: 'Inspect 23:00 UTC' }));
-    expect(screen.getByRole('button', { name: 'Next delivery hour' })).toBeDisabled();
-    expect(fetch).toHaveBeenCalledTimes(count);
   });
 });
 
@@ -519,8 +596,8 @@ it('fits all 24 hours into the compact chart when the viewport changes without r
   const fetch = api();
   vi.stubGlobal('fetch', fetch);
   render(<App />);
-  const chart = await screen.findByRole('group', { name: /Hourly forecast and actual/ });
-  expect(chart).toHaveAttribute('viewBox', '0 0 1040 290');
+  const chart = await screen.findByRole('group', { name: /Hourly wind forecast available/ });
+  expect(chart).toHaveAttribute('viewBox', '0 0 1040 360');
   const count = fetch.mock.calls.length;
   act(() => {
     compact = true;

@@ -233,10 +233,12 @@ export function PublicationTimeline({
   evolution,
   selected,
   onSelect,
+  onInspect = onSelect,
 }: {
   evolution: Evolution;
   selected: number;
   onSelect: (index: number) => void;
+  onInspect?: (index: number) => void;
 }) {
   const id = useId();
   const p = usePlot();
@@ -337,11 +339,11 @@ export function PublicationTimeline({
             tabIndex={index === selected ? 0 : -1}
             aria-pressed={selected === index}
             aria-label={`Inspect publication ${publicationLabel(row.publish_time)}: ${power(row.generation_mw)}${row.selected_as_of ? ', used for the buying decision' : ''}`}
-            onClick={() => onSelect(index)}
+            onClick={() => onInspect(index)}
             onKeyDown={(event) => {
               if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
-                onSelect(index);
+                onInspect(index);
               }
               const next =
                 event.key === 'Home'

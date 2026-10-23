@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import type { RefObject } from 'react';
 import {
   ArrowDownRight,
   ArrowRight,
@@ -10,7 +11,6 @@ import {
   CircleCheck,
   Clock3,
   Info,
-  Lightbulb,
   Loader2,
   TriangleAlert,
 } from 'lucide-react';
@@ -25,14 +25,15 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { loadDecision, loadMetadata } from './api';
-import type { Decision, Metadata, MissingReason } from './api';
+import { loadDecision, loadPriorAccuracy, loadMetadata, sameAnalysis } from './api';
+import type { Decision, PriorAccuracy, Metadata, MissingReason } from './api';
 import { dateLabel, hourLabel, number, power, signed, timestampLabel } from './format';
 import ReplayChart from './ReplayChart';
 import { useResource } from './useResource';
+import type { Resource } from './useResource';
+import { revealDetails } from './selection';
 
 const reasonText: Record<MissingReason, string> = {
   missing_forecast: 'No forecast acquired',
@@ -87,7 +88,16 @@ export function ErrorPanel({
   );
 }
 
-export default function DecisionReplay() {
+type ReplayActions = {
+  decisionDate: string | null;
+  onDecisionDateChange: (date: string) => void;
+  selectedHour: number;
+  onHourChange: (hour: number) => void;
+  onReviewAccuracy: () => void;
+  onInspect: (target: string) => void;
+};
+
+export default function DecisionReplay(actions: ReplayActions) {
   const { resource, reload } = useResource('metadata', loadMetadata);
   if (resource.state === 'loading') return <LoadingPanel message="Loading historical wind data…" />;
   if (resource.state === 'error')
@@ -98,29 +108,25 @@ export default function DecisionReplay() {
       key={`${metadata.snapshot.content_sha256}:${metadata.decision_cutoff_gmt}`}
       metadata={metadata}
       refreshMetadata={reload}
+      {...actions}
     />
-  );
-}
-
-function StepLabel({ number: step, children }: { number: string; children: React.ReactNode }) {
-  return (
-    <span className="flex items-center gap-2.5 text-xs font-medium text-neutral-500">
-      <span className="flex size-6 items-center justify-center rounded-full bg-green-50 text-[10px] font-semibold text-primary">
-        {step}
-      </span>
-      {children}
-    </span>
   );
 }
 
 function ReplayWorkspace({
   metadata,
   refreshMetadata,
+  ...actions
 }: {
   metadata: Metadata;
   refreshMetadata: () => void;
-}) {
-  const [date, setDate] = useState(metadata.decision_date_from);
+} & ReplayActions) {
+  const date = actions.decisionDate ?? metadata.decision_date_from;
+  const setDate = actions.onDecisionDateChange;
+  const { resource: history, reload: retryHistory } = useResource(
+    `${date}|${metadata.delivery_date_from}|${metadata.decision_cutoff_gmt}`,
+    loadPriorAccuracy,
+  );
   const [dateError, setDateError] = useState('');
   const chooseDate = (value: string) => {
     if (
@@ -145,16 +151,15 @@ function ReplayWorkspace({
   return (
     <>
       <Card className="gap-0 py-0 shadow-none" aria-label="Decision date selection" role="region">
-        <div className="grid gap-6 p-5 sm:p-6 md:grid-cols-2 xl:grid-cols-3">
-          <div>
-            <StepLabel number="01">Choose your buying day</StepLabel>
+        <div className="grid grid-cols-2 gap-0 divide-y sm:grid-cols-[1.15fr_1fr_1fr] sm:divide-x sm:divide-y-0">
+          <div className="col-span-2 p-4 sm:col-span-1 sm:p-5">
             <label
               htmlFor="decision-date"
-              className="mt-4 mb-2 block text-xs font-medium text-neutral-600"
+              className="mb-2 block text-xs font-medium text-neutral-600"
             >
               Buying decision date
             </label>
-            <div className="flex max-w-[290px] items-center gap-2">
+            <div className="flex max-w-[320px] items-center gap-2">
               <Button
                 variant="outline"
                 size="icon"
@@ -195,25 +200,23 @@ function ReplayWorkspace({
               {dateError || 'January 2026 · decisions for next-day delivery'}
             </p>
           </div>
-          <div className="flex items-center gap-4 rounded-sm border border-neutral-100 bg-neutral-50/70 px-5 py-4">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-sm border bg-white text-primary">
-              <CalendarDays className="size-5" aria-hidden="true" />
-            </div>
-            <div>
-              <p className="text-xs text-neutral-500">Wind generation the next day</p>
-              <p className="mt-1.5 text-lg font-semibold tracking-tight">
-                {dateLabel(delivery.toISOString().slice(0, 10))}
-              </p>
-              <p className="mt-1 text-[11px] text-neutral-500">
-                The day the electricity is delivered
-              </p>
-            </div>
+          <div className="p-4 sm:p-5">
+            <p className="mb-2 flex items-center gap-2 text-xs font-medium text-neutral-600">
+              <CalendarDays className="size-3.5 text-primary" aria-hidden="true" />
+              Delivery day
+            </p>
+            <p className="flex min-h-10 items-center text-base font-semibold tracking-tight sm:text-xl">
+              {dateLabel(delivery.toISOString().slice(0, 10))}
+            </p>
+            <p className="mt-2 text-[11px] leading-relaxed text-neutral-500">
+              Next-day wind generation
+            </p>
           </div>
-          <div className="flex items-center gap-4 rounded-sm border border-green-100 bg-green-50/45 px-5 py-4 md:col-span-2 xl:col-span-1">
-            <Clock3 className="size-5 shrink-0 text-primary" aria-hidden="true" />
+          <div className="border-l bg-primary/[.025] p-4 sm:border-l-0 sm:p-5">
             <div>
-              <div className="flex items-center gap-1.5">
-                <p className="text-xs text-neutral-500">Use forecasts published by</p>
+              <div className="mb-2 flex items-center gap-2">
+                <Clock3 className="size-3.5 text-primary" aria-hidden="true" />
+                <p className="text-xs font-medium text-neutral-600">Forecast deadline</p>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
@@ -230,24 +233,31 @@ function ReplayWorkspace({
                   </TooltipContent>
                 </Tooltip>
               </div>
-              <p className="mt-1.5 text-sm font-semibold">
+              <p className="flex min-h-10 items-center text-sm font-semibold tracking-tight sm:text-base">
                 {metadata.decision_cutoff_gmt} GMT on the buying day
               </p>
               <a
                 href={metadata.cutoff_reference_url}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
+                className="mt-2 inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
               >
                 Assumed deadline · N2EX source
                 <ArrowUpRight className="size-3" aria-hidden="true" />
               </a>
-              <p className="mt-0.5 text-[10px] text-neutral-500">Client deadline to be confirmed</p>
             </div>
           </div>
         </div>
       </Card>
-      <DecisionPanel key={date} date={date} metadata={metadata} refreshMetadata={refreshMetadata} />
+      <DecisionPanel
+        key={date}
+        date={date}
+        metadata={metadata}
+        refreshMetadata={refreshMetadata}
+        history={history}
+        retryHistory={retryHistory}
+        {...actions}
+      />
       <Methodology metadata={metadata} />
     </>
   );
@@ -257,11 +267,16 @@ function DecisionPanel({
   date,
   metadata,
   refreshMetadata,
+  history,
+  retryHistory,
+  ...actions
 }: {
+  history: Resource<PriorAccuracy>;
+  retryHistory: () => void;
   date: string;
   metadata: Metadata;
   refreshMetadata: () => void;
-}) {
+} & ReplayActions) {
   const { resource, reload } = useResource(date, loadDecision);
   if (resource.state === 'loading')
     return (
@@ -289,11 +304,44 @@ function DecisionPanel({
       </div>
     );
   }
-  return <DecisionResults decision={resource.value} />;
+  return (
+    <DecisionResults
+      decision={resource.value}
+      history={history}
+      retryHistory={retryHistory}
+      refreshMetadata={refreshMetadata}
+      {...actions}
+    />
+  );
 }
 
-function DecisionResults({ decision }: { decision: Decision }) {
-  const [selected, setSelected] = useState(0);
+function DecisionResults({
+  decision,
+  onReviewAccuracy,
+  onInspect,
+  history,
+  retryHistory,
+  refreshMetadata,
+  selectedHour: selected,
+  onHourChange: setSelected,
+}: {
+  decision: Decision;
+  history: Resource<PriorAccuracy>;
+  retryHistory: () => void;
+  refreshMetadata: () => void;
+} & ReplayActions) {
+  const [compare, setCompare] = useState(false);
+  const detailsRef = useRef<HTMLElement>(null);
+  const forecastRef = useRef<HTMLElement>(null);
+  const inspectForecast = (index: number) => {
+    setSelected(index);
+    revealDetails(forecastRef.current);
+  };
+  const inspectHour = (index: number) => {
+    setSelected(index);
+    setCompare(true);
+    requestAnimationFrame(() => revealDetails(detailsRef.current));
+  };
   const { metrics, hours } = decision;
   const coverage = metrics.coverage;
   const countHours = (count: number) => `${count} ${count === 1 ? 'hour' : 'hours'}`;
@@ -313,23 +361,24 @@ function DecisionResults({ decision }: { decision: Decision }) {
         Replay loaded for {dateLabel(decision.decision_date)}. {coverage.matched_hours} of{' '}
         {coverage.expected_hours} hours matched.
       </p>
-      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-neutral-500">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge
-            variant="outline"
-            className={
-              coverage.matched_hours === coverage.expected_hours
-                ? 'gap-1.5 border-primary/20 bg-primary/5 px-2.5 py-1 text-primary'
-                : 'gap-1.5 border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-800'
-            }
-          >
-            <CircleCheck className="size-3" aria-hidden="true" />
-            {coverage.matched_hours} / {coverage.expected_hours} hours compared
-          </Badge>
-          <span>{number(coverage.coverage_percent)}% of the day</span>
+      {compare && (
+        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-neutral-500">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              variant="outline"
+              className={
+                coverage.matched_hours === coverage.expected_hours
+                  ? 'gap-1.5 border-primary/20 bg-primary/5 px-2.5 py-1 text-primary'
+                  : 'gap-1.5 border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-800'
+              }
+            >
+              <CircleCheck className="size-3" aria-hidden="true" />
+              {coverage.matched_hours} / {coverage.expected_hours} hours compared
+            </Badge>
+          </div>
+          <span>Each compared hour has a forecast and both actual readings.</span>
         </div>
-        <span>Each compared hour has a forecast and both actual readings.</span>
-      </div>
+      )}
       {coverage.matched_hours < coverage.expected_hours && (
         <Alert className="border-amber-200 bg-amber-50 text-amber-950">
           <TriangleAlert className="size-4" />
@@ -342,64 +391,111 @@ function DecisionResults({ decision }: { decision: Decision }) {
           </AlertDescription>
         </Alert>
       )}
-      <Alert role="note" className="border-green-100 bg-primary/5 p-4 text-neutral-800 sm:p-5">
-        <Lightbulb className="size-4 text-primary" />
-        <AlertTitle className="text-sm font-semibold">
-          {dateLabel(decision.delivery_date)} wind generation
-        </AlertTitle>
-        <AlertDescription className="mt-1 text-sm leading-relaxed text-neutral-600">
-          {daySummary}
-        </AlertDescription>
-      </Alert>
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_290px] 2xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.8fr)_minmax(300px,1fr)]">
         <Card
           className="min-w-0 gap-0 overflow-hidden py-0 shadow-none"
           role="region"
           aria-labelledby="chart-title"
         >
-          <CardHeader className="gap-4 p-5 sm:p-6">
-            <StepLabel number="02">See what was expected</StepLabel>
-            <div>
-              <h2 id="chart-title" className="text-lg font-semibold tracking-tight sm:text-xl">
-                Forecast vs. actual generation
-              </h2>
-              <p className="mt-1.5 text-xs text-neutral-500">
-                {dateLabel(decision.delivery_date)} · The day after the buying decision
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-4 text-[11px] text-neutral-600">
-              <span className="flex items-center gap-2">
-                <i className="w-5 border-t-2 border-dashed border-primary" aria-hidden="true" />
-                Expected before the deadline
-              </span>
-              <span className="flex items-center gap-2">
-                <i className="w-5 border-t-2 border-actual" aria-hidden="true" />
-                Reported after delivery
-              </span>
-            </div>
-            <p className="text-xs leading-relaxed text-neutral-500">
-              Each point is one hour. A wider gap means a larger forecast difference.{' '}
-              <strong className="font-medium text-neutral-600">MW (megawatts) measures power</strong>:
-              a higher value means more wind-generated electricity at that time.
+          <CardHeader className="border-b p-5 sm:p-6">
+            <p className="text-[10px] font-semibold tracking-[.14em] text-primary">
+              01 · THE FORECAST YOU COULD USE
+            </p>
+            <h2 id="chart-title" className="text-lg font-semibold">
+              Wind forecast for {dateLabel(decision.delivery_date)}
+            </h2>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              For each hour, the latest publication available by {timestampLabel(decision.cutoff)}{' '}
+              UTC.
             </p>
           </CardHeader>
-          <CardContent className="px-3 pb-0 sm:px-5">
-            <ReplayChart hours={hours} selected={selected} onSelect={setSelected} />
-          </CardContent>
-          <HourInspector decision={decision} selected={selected} onSelect={setSelected} />
-        </Card>
-        <div className="min-w-0 space-y-4">
-          <DailyMetrics decision={decision} />
-          <div className="flex gap-2.5 px-1 text-xs leading-relaxed text-neutral-500">
-            <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            <p>
-              The Elexon sources may cover different groups of wind farms. The gap does not measure
-              forecasting quality alone.
-            </p>
+          {!compare && (
+            <ForecastAnswer
+              decision={decision}
+              selected={selected}
+              onSelect={setSelected}
+              detailsRef={forecastRef}
+            />
+          )}
+          {compare && (
+            <HourInspector
+              decision={decision}
+              selected={selected}
+              onSelect={setSelected}
+              detailsRef={detailsRef}
+            />
+          )}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t p-4 sm:px-6">
+            <Button
+              variant="outline"
+              size="sm"
+              aria-pressed={compare}
+              onClick={() => setCompare(!compare)}
+            >
+              {compare ? 'Hide actual generation' : 'Compare with actual generation'}
+            </Button>
+            <Button variant="link" size="sm" onClick={() => onInspect(hours[selected].target_time)}>
+              Why this forecast?
+              <ArrowRight aria-hidden="true" />
+            </Button>
           </div>
-        </div>
+        </Card>
+        <HistoricalContext
+          history={history}
+          retry={retryHistory}
+          refresh={refreshMetadata}
+          decision={decision}
+          onExplore={onReviewAccuracy}
+        />
+        <Card
+          className="min-w-0 gap-0 py-0 shadow-none lg:col-start-1"
+          role="region"
+          aria-label="Hourly forecast chart"
+        >
+          <CardContent className="px-3 pt-5 pb-0 sm:px-5">
+            <ReplayChart
+              hours={hours}
+              selected={selected}
+              onSelect={setSelected}
+              onInspect={compare ? inspectHour : inspectForecast}
+              showActuals={compare}
+            />
+          </CardContent>
+        </Card>
       </div>
-      <Accordion type="multiple" className="rounded-sm border bg-white px-5 sm:px-6">
+      <p className="flex items-start gap-2 text-xs leading-relaxed text-muted-foreground">
+        <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+        These national Elexon series may cover different groups of wind farms. The historical gap
+        does not isolate model error or determine your purchase quantity.
+      </p>
+      <Accordion type="single" collapsible className="rounded-lg border bg-white px-5 sm:px-6">
+        <AccordionItem value="day-review">
+          <AccordionTrigger className="py-5 text-sm">
+            Review this day after delivery
+          </AccordionTrigger>
+          <AccordionContent>
+            <section
+              className="rounded-lg border bg-white p-5 sm:p-6"
+              aria-label="Buying day interpretation"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="max-w-2xl">
+                  <p className="text-[10px] font-semibold tracking-[.14em] text-primary">
+                    LOOKING BACK AT THIS BUYING DAY
+                  </p>
+                  <h3 className="mt-2 text-lg font-semibold">What did the wind assumption miss?</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{daySummary}</p>
+                </div>
+                <Badge variant="outline" className="rounded-sm">
+                  Known after delivery
+                </Badge>
+              </div>
+              <DailyMetrics decision={decision} />
+            </section>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
+      <Accordion type="multiple" className="rounded-lg border bg-white px-5 sm:px-6">
         <AccordionItem value="metrics">
           <AccordionTrigger className="py-5 hover:no-underline">
             <span>
@@ -423,11 +519,198 @@ function DecisionResults({ decision }: { decision: Decision }) {
             </span>
           </AccordionTrigger>
           <AccordionContent className="pb-5">
-            <Evidence decision={decision} selected={selected} onSelect={setSelected} />
+            <Evidence decision={decision} selected={selected} onSelect={inspectHour} />
           </AccordionContent>
         </AccordionItem>
       </Accordion>
     </div>
+  );
+}
+
+function ForecastAnswer({
+  decision,
+  selected,
+  onSelect,
+  detailsRef,
+}: {
+  decision: Decision;
+  selected: number;
+  onSelect: (hour: number) => void;
+  detailsRef: RefObject<HTMLElement | null>;
+}) {
+  const hour = decision.hours[selected];
+  return (
+    <section
+      ref={detailsRef}
+      tabIndex={-1}
+      className="flex scroll-mt-5 flex-wrap items-center justify-between gap-4 p-5 outline-none focus:ring-2 focus:ring-inset focus:ring-primary/25 sm:px-6"
+      aria-label="Buying-time forecast"
+    >
+      <div>
+        <p className="text-xs text-muted-foreground">
+          {hourLabel(hour.target_time)}–{String((selected + 1) % 24).padStart(2, '0')}:00 UTC
+        </p>
+        <p
+          className="mt-1 text-[32px] font-semibold tracking-tight text-primary tabular-nums"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          {power(hour.forecast_mw)}
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Published {timestampLabel(hour.forecast_published_at)}
+          {hour.forecast_published_at ? ' UTC' : ''}
+        </p>
+        {hour.forecast_mw === null && (
+          <p className="mt-1 text-xs text-amber-800">
+            No eligible forecast is available for this hour.
+          </p>
+        )}
+      </div>
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          size="icon"
+          className="size-10"
+          aria-label="Previous forecast hour"
+          disabled={selected === 0}
+          onClick={() => onSelect(selected - 1)}
+        >
+          <ChevronLeft />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon"
+          className="size-10"
+          aria-label="Next forecast hour"
+          disabled={selected === 23}
+          onClick={() => onSelect(selected + 1)}
+        >
+          <ChevronRight />
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+function HistoricalContext({
+  history,
+  retry,
+  refresh,
+  decision,
+  onExplore,
+}: {
+  history: Resource<PriorAccuracy>;
+  retry: () => void;
+  refresh: () => void;
+  decision: Decision;
+  onExplore: () => void;
+}) {
+  return (
+    <Card
+      className="gap-0 overflow-hidden py-0 shadow-none lg:col-start-2 lg:row-start-1 lg:row-span-2"
+      role="region"
+      aria-label="Historical reliability"
+    >
+      <CardHeader className="border-b p-5 sm:p-6">
+        <p className="text-[10px] font-semibold tracking-[.14em] text-primary">
+          02 · THE HISTORICAL GAP
+        </p>
+        <h2 className="text-lg font-semibold">How close were the forecasts?</h2>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Evidence available by {timestampLabel(decision.cutoff)} UTC
+        </p>
+      </CardHeader>
+      <CardContent className="p-5 sm:p-6">
+        {history.state === 'loading' && (
+          <p role="status" className="text-sm text-muted-foreground">
+            Loading historical accuracy…
+          </p>
+        )}
+        {history.state === 'error' && (
+          <div>
+            <p className="text-sm text-muted-foreground">
+              Historical accuracy could not be loaded. The buying-time forecast is still available.
+            </p>
+            <Button variant="outline" className="mt-3" onClick={retry}>
+              Retry historical accuracy
+            </Button>
+          </div>
+        )}
+        {history.state === 'ready' &&
+          (!sameAnalysis(history.value.meta, decision.meta) ? (
+            <div>
+              <p role="alert" className="text-sm text-destructive">
+                The accuracy reference does not match this forecast. Reload the overview before
+                comparing them.
+              </p>
+              <Button variant="outline" className="mt-3" onClick={refresh}>
+                Refresh overview
+              </Button>
+            </div>
+          ) : history.value.metrics.coverage.matched_hours === 0 ? (
+            <div>
+              <p className="text-base font-semibold">Insufficient earlier history</p>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                {history.value.metrics.coverage.expected_hours === 0
+                  ? 'No delivery hours in this snapshot had finished by this buying deadline.'
+                  : 'No complete forecast and actual pairs were available by this buying deadline.'}
+              </p>
+              <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                Later outcomes are excluded. Choose a later buying day to review the history
+                available then.
+              </p>
+            </div>
+          ) : (
+            <>
+              <p className="text-xs text-muted-foreground">Average hourly gap · MAE</p>
+              <p className="mt-2 text-[32px] font-semibold tracking-tight tabular-nums">
+                {power(history.value.metrics.mae_mw)}
+              </p>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                {history.value.metrics.mae_mw === null
+                  ? 'There are no complete hourly comparisons in this period.'
+                  : 'This is how far forecasts differed from reported generation on average, ignoring whether the forecast was high or low.'}
+              </p>
+              <div className="mt-5 border-t pt-4">
+                <p className="text-sm font-medium">
+                  {history.value.metrics.bias_mw === null
+                    ? 'Average direction unavailable'
+                    : history.value.metrics.bias_mw > 0
+                      ? 'Forecasts were higher on average'
+                      : history.value.metrics.bias_mw < 0
+                        ? 'Forecasts were lower on average'
+                        : 'High and low differences balanced on average'}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {history.value.metrics.bias_mw === null
+                    ? 'Complete comparisons are needed.'
+                    : history.value.metrics.bias_mw === 0
+                      ? 'Individual hours can still have large differences.'
+                      : `${power(Math.abs(history.value.metrics.bias_mw))} ${history.value.metrics.bias_mw > 0 ? 'above' : 'below'} reported power, keeping the direction of each difference.`}
+                </p>
+              </div>
+              <p className="mt-5 text-xs text-muted-foreground">
+                {history.value.metrics.coverage.matched_hours} /{' '}
+                {history.value.metrics.coverage.expected_hours} hours compared · completed earlier
+                hours
+              </p>
+              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                Delivery window: {timestampLabel(history.value.delivery_start)}–
+                {timestampLabel(history.value.delivery_end)} UTC
+              </p>
+              <p className="mt-3 rounded-md bg-muted p-3 text-xs leading-relaxed text-muted-foreground">
+                Only completed hours with both actual readings published by this deadline. Earlier
+                evidence is not a guaranteed future error range.
+              </p>
+            </>
+          ))}
+        <Button variant="outline" className="mt-5 w-full" onClick={onExplore}>
+          Explore historical accuracy
+          <ArrowRight aria-hidden="true" />
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -441,80 +724,47 @@ function DailyMetrics({ decision }: { decision: Decision }) {
         : metrics.bias_mw < 0
           ? 'Lower on average'
           : 'No average direction';
-  const DirectionIcon =
-    metrics.bias_mw === null || metrics.bias_mw === 0
-      ? ArrowRight
-      : metrics.bias_mw < 0
-        ? ArrowDownRight
-        : ArrowUpRight;
   return (
-    <Card className="gap-0 py-0 shadow-none" role="region" aria-label="Daily accuracy metrics">
-      <CardHeader className="px-5 pt-5 pb-4">
-        <StepLabel number="03">Understand the difference</StepLabel>
-      </CardHeader>
-      <CardContent className="px-5 pb-5">
-        <article>
-          <div className="mb-3 flex items-center gap-2 text-primary">
-            <span className="flex size-7 items-center justify-center rounded-sm bg-green-50">
-              <BarIcon />
-            </span>
-            <span className="text-[11px] font-medium">Average gap</span>
-          </div>
-          <h2 className="text-sm font-semibold leading-relaxed">How far off was the forecast?</h2>
-          <p className="mt-3 text-[36px] leading-none font-semibold tracking-[-.05em] tabular-nums">
-            {number(metrics.mae_mw)}
-            <span className="ml-1.5 text-xs font-normal tracking-normal text-neutral-400">MW</span>
-          </p>
-          <p className="mt-3 text-xs leading-[1.8] text-muted-foreground">
-            {metrics.mae_mw === null
-              ? 'No complete hourly comparisons are available.'
-              : 'Average size of the hourly differences, whether the forecast was high or low. Smaller means closer to actual.'}
-          </p>
-        </article>
-        <Separator className="my-5" />
-        <article>
-          <div className="mb-3 flex items-center gap-2 text-amber-700">
-            <span className="flex size-7 items-center justify-center rounded-sm bg-amber-50">
-              <DirectionIcon className="size-4" aria-hidden="true" />
-            </span>
-            <span className="text-[11px] font-medium">{direction}</span>
-          </div>
-          <h2 className="text-sm font-semibold leading-relaxed">Was the forecast high or low?</h2>
-          <p className="mt-3 text-[36px] leading-none font-semibold tracking-[-.05em] tabular-nums">
-            {metrics.bias_mw === null ? '—' : number(Math.abs(metrics.bias_mw))}
-            <span className="ml-1.5 text-xs font-normal tracking-normal text-neutral-400">MW</span>
-          </p>
-          <p className="mt-3 text-xs leading-[1.8] text-muted-foreground">
-            {metrics.bias_mw === null
-              ? 'No complete hourly comparisons are available.'
-              : metrics.bias_mw === 0
-                ? 'High and low differences balance on average. Individual hours may still differ.'
-                : `The forecast was ${metrics.bias_mw > 0 ? 'higher' : 'lower'} by this amount on average. High and low differences can cancel each other out.`}
-          </p>
-        </article>
-        <div className="mt-5 rounded-sm bg-neutral-50 p-3 text-[11px] leading-relaxed text-neutral-500">
-          <span className="mb-1 block font-medium text-neutral-700">How this helps your team</span>
-          Review the reliability of past wind assumptions. Planning a purchase also requires demand
-          and existing contracts.
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function BarIcon() {
-  return (
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      aria-hidden="true"
+    <div
+      className="mt-5 grid gap-4 sm:grid-cols-2"
+      role="region"
+      aria-label="Daily accuracy metrics"
     >
-      <path d="M3 12V8m5 4V3m5 9V6" strokeLinecap="round" />
-    </svg>
+      <article className="rounded-md border bg-neutral-50/50 p-5">
+        <p className="text-[11px] font-medium text-primary">SIZE OF THE MISS · MAE</p>
+        <h2 className="mt-2 min-h-10 text-sm font-semibold leading-5">
+          How far off was the forecast?
+        </h2>
+        <p className="mt-4 text-[36px] font-semibold leading-none tracking-tight tabular-nums">
+          {number(metrics.mae_mw)}
+          <span className="ml-2 text-sm font-normal text-muted-foreground">MW</span>
+        </p>
+        <p className="mt-2 text-xs font-medium text-primary">Average gap</p>
+        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+          {metrics.mae_mw === null
+            ? 'No complete hourly comparisons are available.'
+            : 'Average size of the hourly differences, whether the forecast was high or low. Smaller means closer to actual.'}
+        </p>
+      </article>
+      <article className="rounded-md border bg-neutral-50/50 p-5">
+        <p className="text-[11px] font-medium text-actual">DIRECTION OF THE MISS · BIAS</p>
+        <h2 className="mt-2 min-h-10 text-sm font-semibold leading-5">
+          Was the forecast high or low?
+        </h2>
+        <p className="mt-4 text-[36px] font-semibold leading-none tracking-tight tabular-nums">
+          {metrics.bias_mw === null ? '—' : number(Math.abs(metrics.bias_mw))}
+          <span className="ml-2 text-sm font-normal text-muted-foreground">MW</span>
+        </p>
+        <p className="mt-2 text-xs font-medium text-actual">{direction}</p>
+        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+          {metrics.bias_mw === null
+            ? 'No complete hourly comparisons are available.'
+            : metrics.bias_mw === 0
+              ? 'High and low differences balance on average. Individual hours may still differ.'
+              : `The forecast was ${metrics.bias_mw > 0 ? 'higher' : 'lower'} by this amount on average. High and low differences can cancel each other out.`}
+        </p>
+      </article>
+    </div>
   );
 }
 
@@ -522,10 +772,12 @@ function HourInspector({
   decision,
   selected,
   onSelect,
+  detailsRef,
 }: {
   decision: Decision;
   selected: number;
   onSelect: (index: number) => void;
+  detailsRef: RefObject<HTMLElement | null>;
 }) {
   const hour = decision.hours[selected];
   const DifferenceIcon =
@@ -537,11 +789,20 @@ function HourInspector({
           ? ArrowDownRight
           : ArrowUpRight;
   return (
-    <section aria-label="Selected hour details" className="border-t bg-neutral-50/70 p-5 sm:p-6">
+    <section
+      ref={detailsRef}
+      tabIndex={-1}
+      aria-label="Selected hour details"
+      className="scroll-mt-6 p-5 outline-none focus:ring-2 focus:ring-inset focus:ring-primary/25 sm:p-6"
+    >
       <div className="mb-5 flex items-center justify-between gap-3">
         <div>
           <p className="text-xs font-medium text-neutral-500">Selected delivery hour</p>
-          <h3 className="mt-1 text-lg font-semibold tracking-tight tabular-nums">
+          <h3
+            className="mt-1 text-lg font-semibold tracking-tight tabular-nums"
+            aria-live="polite"
+            aria-atomic="true"
+          >
             {hourLabel(hour.target_time)}–{String((selected + 1) % 24).padStart(2, '0')}:00 UTC
           </h3>
         </div>
@@ -568,29 +829,36 @@ function HourInspector({
           </Button>
         </div>
       </div>
-      <dl className="grid grid-cols-2 gap-3">
-        <div className="rounded-sm border border-green-100 bg-white p-3.5 sm:p-4">
+      <dl className="space-y-3">
+        <div className="rounded-sm border border-primary/20 bg-primary/5 p-4 sm:p-5">
           <dt className="flex items-center gap-2 text-xs font-medium text-neutral-600">
-            <span aria-hidden="true" className="h-0.5 w-4 border-t-2 border-dashed border-primary" />
-            Forecast
+            <span
+              aria-hidden="true"
+              className="h-0.5 w-4 border-t-2 border-dashed border-primary"
+            />
+            Available at the buying deadline
           </dt>
-          <dd className="mt-2 text-lg font-semibold tracking-tight text-primary tabular-nums sm:text-2xl">
+          <dd className="mt-2 text-3xl font-semibold tracking-tight text-primary tabular-nums">
             {power(hour.forecast_mw)}
           </dd>
-          <p className="mt-1 text-xs text-neutral-500">Expected wind power</p>
+          <p className="mt-2 text-xs font-medium text-primary">Expected wind power · forecast</p>
+          <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+            Forecast published: {timestampLabel(hour.forecast_published_at)}
+            {hour.forecast_published_at ? ' UTC' : ''}
+          </p>
         </div>
-        <div className="rounded-sm border border-actual/20 bg-white p-3.5 sm:p-4">
+        <div className="rounded-sm border border-actual/15 bg-neutral-50/70 p-4">
           <dt className="flex items-center gap-2 text-xs font-medium text-neutral-600">
             <span aria-hidden="true" className="h-0.5 w-4 bg-actual" />
-            Actual
+            Known only after delivery
           </dt>
-          <dd className="mt-2 text-lg font-semibold tracking-tight text-actual tabular-nums sm:text-2xl">
+          <dd className="mt-2 text-3xl font-semibold tracking-tight text-actual tabular-nums">
             {power(hour.actual_mw)}
           </dd>
-          <p className="mt-1 text-xs text-neutral-500">Reported wind power</p>
+          <p className="mt-1 text-xs text-neutral-500">Reported wind power · actual</p>
         </div>
       </dl>
-      <div className="mt-3 flex items-start gap-3 rounded-sm border bg-white p-4">
+      <div className="mt-3 flex items-start gap-3 rounded-lg border bg-white p-4">
         <div className="flex size-9 shrink-0 items-center justify-center rounded-sm bg-neutral-100 text-neutral-600">
           <DifferenceIcon className="size-5" aria-hidden="true" />
         </div>
@@ -603,7 +871,8 @@ function HourInspector({
               'Forecast matched reported wind power'
             ) : (
               <>
-                {power(Math.abs(hour.error_mw))} {hour.error_mw > 0 ? 'lower' : 'higher'} than forecast
+                {power(Math.abs(hour.error_mw))} {hour.error_mw > 0 ? 'lower' : 'higher'} than
+                forecast
               </>
             )}
           </p>
@@ -614,13 +883,6 @@ function HourInspector({
           </p>
         </div>
       </div>
-      <p className="mt-4 flex items-start gap-2 text-xs leading-relaxed text-neutral-500">
-        <Clock3 className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-        <span>
-          Forecast published: {timestampLabel(hour.forecast_published_at)}
-          {hour.forecast_published_at ? ' UTC' : ''}
-        </span>
-      </p>
       <p className="mt-2 text-xs leading-relaxed text-neutral-500">
         All times use UTC to keep forecasts, actuals and the buying deadline aligned. For this
         historical period, UTC matches UK local time (GMT).
@@ -711,8 +973,7 @@ function Evidence({
         id="table-help"
         className="mt-2 mb-4 max-w-3xl text-xs leading-relaxed text-muted-foreground"
       >
-        Hourly actual power is the average of the first and second half-hour readings. Forecast age
-        tells you how long before the buying deadline that version was published. Positive
+        Hourly actual power is the average of the first and second half-hour readings. Positive
         difference means the forecast was high; negative means low. A dash means unavailable. All
         times are UTC.
       </p>
@@ -733,7 +994,6 @@ function Evidence({
                 'Hour UTC',
                 'Forecast MW',
                 'Published UTC',
-                'Forecast age at deadline',
                 'Actual: first 30 min MW',
                 'Actual: second 30 min MW',
                 'Hourly actual MW',
@@ -743,7 +1003,7 @@ function Evidence({
                 <th
                   key={label}
                   scope="col"
-                  className={`px-3 py-3 font-medium whitespace-nowrap ${index === 0 || index === 8 ? 'text-left' : ''}`}
+                  className={`px-3 py-3 font-medium whitespace-nowrap ${index === 0 || index === 7 ? 'text-left' : ''}`}
                 >
                   {label}
                 </th>
@@ -771,11 +1031,6 @@ function Evidence({
                 <td className="px-3 py-3">{number(row.forecast_mw)}</td>
                 <td className="px-3 py-3 whitespace-nowrap">
                   {row.forecast_published_at ? timestampLabel(row.forecast_published_at) : '—'}
-                </td>
-                <td className="px-3 py-3 whitespace-nowrap">
-                  {row.forecast_age_hours_at_cutoff === null
-                    ? '—'
-                    : `${number(row.forecast_age_hours_at_cutoff, 2)} h`}
                 </td>
                 <td className="px-3 py-3">{number(row.actual_half_hours_mw[0])}</td>
                 <td className="px-3 py-3">{number(row.actual_half_hours_mw[1])}</td>
@@ -814,10 +1069,9 @@ export function Methodology({ metadata }: { metadata: Metadata }) {
   return (
     <section id="data-sources" className="mt-8 scroll-mt-6">
       <div className="mb-4 flex items-center gap-2">
-        <Info className="size-4 text-primary" aria-hidden="true" />
         <h2 className="text-base font-semibold">Sources and assumptions</h2>
       </div>
-      <Accordion type="multiple" className="rounded-sm border bg-white px-5 sm:px-6">
+      <Accordion type="multiple" className="rounded-lg border bg-white px-5 sm:px-6">
         <AccordionItem value="sources">
           <AccordionTrigger className="py-5">Where the numbers come from</AccordionTrigger>
           <AccordionContent className="space-y-4 text-sm leading-[1.85] text-muted-foreground">
@@ -843,9 +1097,6 @@ export function Methodology({ metadata }: { metadata: Metadata }) {
               {number(metadata.snapshot.outturn_half_hours, 0)} actual half-hours · Retrieved{' '}
               {timestampLabel(metadata.snapshot.retrieved_at)} UTC
             </p>
-            <p className="text-[10px] break-all text-neutral-400">
-              Snapshot: {metadata.snapshot.content_sha256}
-            </p>
           </AccordionContent>
         </AccordionItem>
         <AccordionItem value="limits">
@@ -869,14 +1120,9 @@ export function ProductGuide() {
   return (
     <section id="how-it-works" className="mt-8 scroll-mt-6">
       <div className="mb-4 flex items-center gap-2">
-        <Info className="size-4 text-primary" aria-hidden="true" />
         <h2 className="text-base font-semibold">A little context goes a long way.</h2>
       </div>
-      <Accordion
-        type="multiple"
-        defaultValue={['help']}
-        className="rounded-sm border bg-white px-5 sm:px-6"
-      >
+      <Accordion type="multiple" className="rounded-lg border bg-white px-5 sm:px-6">
         <AccordionItem value="help">
           <AccordionTrigger className="py-5">
             How does this help with a buying decision?

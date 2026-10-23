@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from datetime import datetime
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -73,6 +74,23 @@ def verify(web: str, api: str) -> dict:
         len(daily["days"]) == 31 and daily["days"][-1]["delivery_date"] == "2026-02-01"
     )
     replay = json.loads(request(web, "/api/v1/decisions/2026-01-14"))
+    prior = json.loads(request(web, "/api/v1/decisions/2026-01-14/prior-accuracy"))
+    first_prior = json.loads(
+        request(web, "/api/v1/decisions/2026-01-01/prior-accuracy")
+    )
+    assert prior["meta"] == first_prior["meta"] == reference
+    assert prior["cutoff"] == replay["cutoff"]
+    start = datetime.fromisoformat(prior["delivery_start"])
+    end = datetime.fromisoformat(prior["delivery_end"])
+    cutoff = datetime.fromisoformat(prior["cutoff"])
+    assert end <= cutoff and start < end
+    assert (
+        prior["metrics"]["coverage"]["expected_hours"]
+        == (end - start).total_seconds() / 3600
+    )
+    assert 0 < prior["metrics"]["coverage"]["matched_hours"] < 744
+    assert first_prior["metrics"]["coverage"]["expected_hours"] == 0
+    assert first_prior["metrics"]["mae_mw"] is None
     boundary = json.loads(request(web, "/api/v1/decisions/2026-01-31"))
     target = replay["hours"][0]["target_time"]
     evolution = json.loads(
@@ -108,6 +126,8 @@ def verify(web: str, api: str) -> dict:
         "matched_hours": 744,
         "snapshot_id": reference["snapshot_id"],
         "mae_mw": overall["metrics"]["mae_mw"],
+        "prior_matched_hours": prior["metrics"]["coverage"]["matched_hours"],
+        "prior_mae_mw": prior["metrics"]["mae_mw"],
     }
 
 

@@ -14,6 +14,7 @@ from app.analysis_schemas import (
     DecisionResponse,
     ErrorResponse,
     EvolutionResponse,
+    PriorAccuracyResponse,
 )
 from app.ingestion.models import Scope
 from app.repositories.analysis import open_analysis_repository
@@ -82,6 +83,17 @@ def accuracy(
     return service.accuracy(
         date_from or service.scope.decision_start, date_to or service.scope.decision_end
     )
+
+
+@router.get("/decisions/{decision_date}/prior-accuracy", response_model=PriorAccuracyResponse)
+def prior_accuracy(decision_date: DecisionDate, service: Service) -> PriorAccuracyResponse:
+    """Accuracy evidence available by this decision's configured buying cutoff.
+
+    Includes only earlier completed delivery hours. Both stored actual half-hours must
+    have been published at or before cutoff. Forecasts retain their original buying-day
+    deadline. Missing or not-yet-published actuals never become zero-valued comparisons.
+    """
+    return service.prior_accuracy(decision_date)
 
 
 @router.get("/accuracy/daily", response_model=DailyAccuracyResponse)

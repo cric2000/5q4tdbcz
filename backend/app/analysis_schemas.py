@@ -132,6 +132,21 @@ class AccuracyResponse(BaseModel):
     worst_hours: list[HourlyComparison]
 
 
+class PriorAccuracyResponse(BaseModel):
+    meta: AnalysisReference
+    decision_date: date
+    cutoff: AwareDatetime
+    delivery_start: AwareDatetime | None = Field(
+        description="First completed candidate delivery hour; null when no earlier hour exists."
+    )
+    delivery_end: AwareDatetime | None = Field(
+        description="Exclusive end of completed candidate hours at the selected buying cutoff."
+    )
+    metrics: MetricSummary = Field(
+        description="Earlier forecast errors using only actual readings published by cutoff."
+    )
+
+
 class DailyAccuracyResponse(BaseModel):
     meta: AnalysisReference
     decision_date_from: date

@@ -1,5 +1,13 @@
 // Synthetic API contracts for UI tests only. Production screens always request the API.
-import type { Accuracy, DailyAccuracy, Decision, Evolution, Metadata, PilotConfig } from '../api';
+import type {
+  Accuracy,
+  DailyAccuracy,
+  Decision,
+  Evolution,
+  Metadata,
+  PilotConfig,
+  PriorAccuracy,
+} from '../api';
 
 export const health = {
   status: 'ok',
@@ -140,6 +148,35 @@ export function emptyDecision(): Decision {
   return value;
 }
 export const response = (value: unknown) => ({ ok: true, json: async () => value });
+
+export function priorAccuracy(date = '2026-01-01', forecast = 120): PriorAccuracy {
+  const cutoff = `${date}T10:15:00Z`;
+  const start = '2026-01-02T00:00:00Z';
+  const expected = Math.max(0, Math.floor((Date.parse(cutoff) - Date.parse(start)) / 3600000));
+  const metrics = expected ? decision('2026-01-01', forecast).metrics : emptyDecision().metrics;
+  metrics.coverage = {
+    ...metrics.coverage,
+    expected_hours: expected,
+    matched_hours: expected,
+    coverage_percent: expected ? 100 : null,
+    missing_forecast_hours: 0,
+    incomplete_actual_hours: 0,
+  };
+  const error = forecast - 110;
+  metrics.overforecast_hours = error > 0 ? expected : 0;
+  metrics.underforecast_hours = error < 0 ? expected : 0;
+  metrics.exact_hours = error === 0 ? expected : 0;
+  return {
+    meta: decision().meta,
+    decision_date: date,
+    cutoff,
+    delivery_start: expected ? start : null,
+    delivery_end: expected
+      ? new Date(Date.parse(start) + expected * 3600000).toISOString().replace('.000Z', 'Z')
+      : null,
+    metrics,
+  };
+}
 
 export function accuracyRange(
   from = '2026-01-01',

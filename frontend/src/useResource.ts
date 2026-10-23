@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-type Resource<T> = { key: string; state: 'loading' } | { key: string; state: 'ready'; value: T } | { key: string; state: 'error'; error: Error };
+export type Resource<T> = { key: string; state: 'loading' } | { key: string; state: 'ready'; value: T } | { key: string; state: 'error'; error: Error };
 
 /** Effects synchronize external requests only; labels, chart data and metrics are derived in render. */
 export function useResource<T>(key: string, loader: (key: string, signal: AbortSignal) => Promise<T>) {
