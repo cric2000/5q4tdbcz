@@ -9,7 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { DailyMetrics, MetricExplanations } from '@/features/buying/DailyReview';
+import { DailyReview, MetricExplanations } from '@/features/buying/DailyReview';
 import { ForecastAnswer } from '@/features/buying/ForecastAnswer';
 import { HistoricalContext } from '@/features/buying/HistoricalContext';
 import { HourInspector } from '@/features/buying/HourInspector';
@@ -51,17 +51,6 @@ export function DecisionResults({
   };
   const { metrics, hours } = decision;
   const coverage = metrics.coverage;
-  const countHours = (count: number) => `${count} ${count === 1 ? 'hour' : 'hours'}`;
-  const daySummary =
-    coverage.matched_hours === 0
-      ? 'There is not enough information to compare this day.'
-      : metrics.exact_hours === coverage.matched_hours
-        ? 'The forecast and reported generation were equal in every compared hour.'
-        : metrics.overforecast_hours === coverage.matched_hours
-          ? 'The forecast was higher than reported generation in every compared hour.'
-          : metrics.underforecast_hours === coverage.matched_hours
-            ? 'The forecast was lower than reported generation in every compared hour.'
-            : `The forecast was higher than reported generation in ${countHours(metrics.overforecast_hours)} and lower in ${countHours(metrics.underforecast_hours)}.${metrics.exact_hours > 0 ? ` It matched exactly in ${countHours(metrics.exact_hours)}.` : ''}`;
   return (
     <div className="mt-5 space-y-5">
       <p className="sr-only" role="status">
@@ -175,30 +164,13 @@ export function DecisionResults({
         These national Elexon series may cover different groups of wind farms. The historical gap
         does not isolate model error or determine your purchase quantity.
       </p>
-      <Accordion type="single" collapsible className="rounded-lg border bg-white px-5 sm:px-6">
+      <Accordion type="single" collapsible>
         <AccordionItem value="day-review">
           <AccordionTrigger className="py-5 text-sm">
             Review this day after delivery
           </AccordionTrigger>
           <AccordionContent>
-            <section
-              className="rounded-lg border bg-white p-5 sm:p-6"
-              aria-label="Buying day interpretation"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="max-w-2xl">
-                  <p className="text-[10px] font-semibold tracking-[.14em] text-primary">
-                    LOOKING BACK AT THIS BUYING DAY
-                  </p>
-                  <h3 className="mt-2 text-lg font-semibold">What did the wind assumption miss?</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{daySummary}</p>
-                </div>
-                <Badge variant="outline" className="rounded-sm">
-                  Known after delivery
-                </Badge>
-              </div>
-              <DailyMetrics decision={decision} />
-            </section>
+            <DailyReview decision={decision} />
           </AccordionContent>
         </AccordionItem>
       </Accordion>

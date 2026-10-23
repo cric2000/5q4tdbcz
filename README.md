@@ -75,7 +75,7 @@ PYTHONPATH=backend .venv/bin/python -m scripts.validate_snapshot
 .venv/bin/python scripts/smoke.py --start-server
 ```
 
-The build includes TypeScript checking. The smoke test starts and stops a temporary server for the compiled frontend and API. The last local regression passed **137 backend tests and 60 frontend tests**; hosted checks apply to their individual commits.
+The build includes TypeScript checking. The smoke test starts and stops a temporary server for the compiled frontend and API. Hosted checks apply to their individual commits.
 
 ## Method and limits
 

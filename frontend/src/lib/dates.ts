@@ -9,6 +9,7 @@ const sameMonth = (start: Date, end: Date) =>
 
 /** Human-readable input scope, derived from the server's bounds rather than duplicated dates. */
 export function dateRangeLabel(from: string, to: string) {
+  if (from === to) return dateLabel(from);
   const start = utcDate(from),
     end = utcDate(to);
   const first = sameMonth(start, end)

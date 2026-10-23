@@ -15,7 +15,7 @@ export function LoadingPanel({ message }: { message: string }) {
         <h2 className="text-sm font-medium">{message}</h2>
       </div>
       <p className="text-sm text-muted-foreground">
-        Loading the forecast and reported wind generation.
+        Please wait. Results will appear here when loading finishes.
       </p>
       <div aria-hidden="true" className="grid grid-cols-3 gap-4">
         <Skeleton className="h-18 rounded-sm" />

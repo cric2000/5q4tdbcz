@@ -67,8 +67,9 @@ export default function App() {
               Your wind forecast. <span className="text-primary">Its historical reliability.</span>
             </h1>
             <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-              Choose a buying day. See the wind forecast available at your deadline and its measured
-              historical accuracy together.
+              Plan how much electricity you may need beyond wind. Choose a buying day to see the
+              next-day GB wind forecast available at the deadline and how much earlier forecasts
+              missed by. This pilot replays January 2026.
             </p>
           </section>
           <section
@@ -77,8 +78,8 @@ export default function App() {
               view === 'replay'
                 ? 'Decision Replay'
                 : view === 'accuracy'
-                  ? 'Accuracy & risk'
-                  : 'Forecast evolution'
+                  ? 'Historical accuracy review'
+                  : 'Forecast publication history'
             }
             tabIndex={-1}
             className="scroll-mt-5 outline-none"
@@ -112,7 +113,8 @@ export default function App() {
                     : 'The historical data is not ready yet.'}
                 </h2>
                 <p className="mt-3 text-sm text-muted-foreground">
-                  Prepare a valid historical snapshot before opening the buying overview.
+                  The app maintainer needs to prepare the pilot’s historical data. Check again once
+                  it is ready.
                 </p>
                 <p className="mt-3 text-sm text-muted-foreground">
                   Assumed decision cutoff: {resource.value.config.decision_cutoff_gmt} GMT · Client
@@ -151,15 +153,15 @@ export default function App() {
                 Explore more evidence
               </summary>
               <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-                Optional: filter the accuracy period or investigate another delivery hour.
+                Review a wider buying period after delivery, or check why a forecast was selected.
               </p>
               <div className="mt-4 flex flex-wrap gap-3">
                 <Button variant="outline" onClick={() => openView('accuracy')}>
-                  Accuracy & risk
+                  Review a buying period
                   <ArrowRight aria-hidden="true" />
                 </Button>
                 <Button variant="outline" onClick={() => openView('evolution')}>
-                  Forecast evolution
+                  Check forecast updates
                   <ArrowRight aria-hidden="true" />
                 </Button>
               </div>

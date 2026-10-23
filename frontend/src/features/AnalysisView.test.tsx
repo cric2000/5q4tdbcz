@@ -30,7 +30,7 @@ function api(overrides: Record<string, unknown> = {}) {
     return Promise.resolve(response(url.pathname.endsWith('/daily') ? range.daily : range.overall));
   });
 }
-async function open(view: 'Accuracy & risk' | 'Forecast evolution', fetch = api()) {
+async function open(view: 'Review a buying period' | 'Check forecast updates', fetch = api()) {
   vi.stubGlobal('fetch', fetch);
   render(<App />);
   fireEvent.click(await screen.findByText('Explore more evidence'));
@@ -40,10 +40,18 @@ async function open(view: 'Accuracy & risk' | 'Forecast evolution', fetch = api(
 const accuracy = () => screen.getByRole('region', { name: 'Accuracy results' });
 const history = () => screen.getByRole('region', { name: 'Forecast evolution results' });
 
-describe('Accuracy & risk', () => {
+describe('Review a buying period', () => {
   it('loads coordinated range APIs, shows coverage, both charts and largest-error links', async () => {
-    const fetch = await open('Accuracy & risk');
+    const fetch = await open('Review a buying period');
     expect(await screen.findByText('744 / 744 hours compared')).toBeVisible();
+    expect(accuracy()).toHaveTextContent('Delivery days: 2 January to 1 February 2026');
+    expect(accuracy()).toHaveTextContent(
+      'underestimate how much electricity you needed from other sources',
+    );
+    expect(accuracy()).toHaveTextContent(
+      'Known after delivery: this review includes later outcomes',
+    );
+    expect(accuracy()).toHaveTextContent('About 9 in 10 past hourly gaps');
     expect(within(accuracy()).getByText('Average gap (MAE)')).toBeVisible();
     expect(screen.getByRole('img', { name: /Average forecast gap by buying day/ })).toBeVisible();
     expect(
@@ -66,11 +74,15 @@ describe('Accuracy & risk', () => {
   });
 
   it('applies inclusive buying-date filters, including January 31 delivery on February 1', async () => {
-    await open('Accuracy & risk');
+    await open('Review a buying period');
     await screen.findByText('744 / 744 hours compared');
     fireEvent.input(screen.getByLabelText('First buying day'), { target: { value: '2026-01-31' } });
+    expect(screen.getByText(/Dates changed. Select Update analysis/)).toBeVisible();
+    expect(screen.getByText('744 / 744 hours compared')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Update analysis' }));
     await screen.findByText('24 / 24 hours compared');
+    expect(screen.queryByText(/Dates changed. Select Update analysis/)).not.toBeInTheDocument();
+    expect(accuracy()).toHaveTextContent('Delivery days: 01 Feb 2026');
     fireEvent.click(screen.getByRole('button', { name: 'Daily readings and coverage' }));
     const table = screen.getByRole('table', { name: 'Daily accuracy readings' });
     expect(within(table).getAllByRole('row')).toHaveLength(2);
@@ -78,7 +90,7 @@ describe('Accuracy & risk', () => {
   });
 
   it('rejects inverted or empty ranges without requesting analysis', async () => {
-    const fetch = await open('Accuracy & risk');
+    const fetch = await open('Review a buying period');
     await screen.findByText('744 / 744 hours compared');
     const count = fetch.mock.calls.length;
     fireEvent.change(screen.getByLabelText('First buying day'), {
@@ -103,7 +115,7 @@ describe('Accuracy & risk', () => {
         });
       return api()(path, options);
     });
-    await open('Accuracy & risk', fetch);
+    await open('Review a buying period', fetch);
     await screen.findByText('Comparing the selected buying days…');
     fireEvent.change(screen.getByLabelText('First buying day'), {
       target: { value: '2026-01-31' },
@@ -123,7 +135,7 @@ describe('Accuracy & risk', () => {
     const range = accuracyRange();
     range.daily.meta = { ...range.daily.meta, snapshot_id: 'b'.repeat(64) };
     const fetch = api({ '/api/v1/accuracy/daily?from=2026-01-01&to=2026-01-31': range.daily });
-    await open('Accuracy & risk', fetch);
+    await open('Review a buying period', fetch);
     expect(await screen.findByRole('alert')).toHaveTextContent('unexpected accuracy data');
     expect(screen.queryByRole('region', { name: 'Accuracy results' })).not.toBeInTheDocument();
     fetch.mockImplementation(api());
@@ -137,7 +149,7 @@ describe('Accuracy & risk', () => {
       '/api/v1/accuracy?from=2026-01-01&to=2026-01-31': exact.overall,
       '/api/v1/accuracy/daily?from=2026-01-01&to=2026-01-31': exact.daily,
     });
-    await open('Accuracy & risk', fetch);
+    await open('Review a buying period', fetch);
     await screen.findByText('744 / 744 hours compared');
     expect(within(accuracy()).getAllByText('0 MW').length).toBeGreaterThanOrEqual(3);
     const empty = accuracyRange();
@@ -163,14 +175,14 @@ describe('Accuracy & risk', () => {
       }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Back to buying overview' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Accuracy & risk' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Review a buying period' }));
     expect(await screen.findByText('No complete hourly comparisons.')).toBeVisible();
     expect(screen.getByText('No matched hours to rank.')).toBeVisible();
     expect(screen.getByText('No matched hours are available for a distribution.')).toBeVisible();
   });
 
   it('opens the exact outlier delivery hour in forecast history', async () => {
-    const fetch = await open('Accuracy & risk');
+    const fetch = await open('Review a buying period');
     const inspect = await screen.findByRole('button', {
       name: 'Inspect forecasts for 02 Jan, 00:00 UTC',
     });
@@ -184,9 +196,9 @@ describe('Accuracy & risk', () => {
   });
 });
 
-describe('Forecast evolution', () => {
+describe('Check forecast updates', () => {
   it('selects the exact-cutoff publication, retains unchanged later republications and uses chronological spacing', async () => {
-    const fetch = await open('Forecast evolution');
+    const fetch = await open('Check forecast updates');
     const inspector = await screen.findByRole('region', { name: 'Selected publication details' });
     expect(within(inspector).getByText('Used for the buying decision')).toBeVisible();
     expect(within(inspector).getByText('01 Jan, 10:15 UTC')).toBeVisible();
@@ -205,7 +217,7 @@ describe('Forecast evolution', () => {
   });
 
   it('supports keyboard publication inspection and table selection without refetching', async () => {
-    const fetch = await open('Forecast evolution');
+    const fetch = await open('Check forecast updates');
     await screen.findByRole('region', { name: 'Forecast evolution results' });
     const count = fetch.mock.calls.length;
     const point = screen.getByRole('button', { name: /Inspect publication 01 Jan, 10:15 UTC/ });
@@ -224,7 +236,7 @@ describe('Forecast evolution', () => {
   });
 
   it('reveals inspected publications without changing the buying-time forecast or refetching', async () => {
-    const fetch = await open('Forecast evolution');
+    const fetch = await open('Check forecast updates');
     const details = await screen.findByRole('region', { name: 'Selected publication details' });
     const scroll = vi.fn();
     details.scrollIntoView = scroll;
@@ -245,6 +257,8 @@ describe('Forecast evolution', () => {
     expect(scroll).toHaveBeenCalledWith({ block: 'center', behavior: 'auto' });
     expect(within(details).getByText('01 Jan, 08:00 UTC')).toBeVisible();
     expect(within(details).getByText('100 MW')).toBeVisible();
+    expect(within(details).getByText('Available · superseded by a newer forecast')).toBeVisible();
+    expect(details).toHaveTextContent('the buying decision uses 120 MW instead');
     expect(buyingValue).toHaveTextContent('120 MW');
     // Re-inspecting the selected row must still reveal its details.
     fireEvent.click(action);
@@ -254,12 +268,13 @@ describe('Forecast evolution', () => {
     );
     expect(details).toHaveFocus();
     expect(within(details).getByText('After the deadline · excluded')).toBeVisible();
+    expect(details).toHaveTextContent('arrived too late to use for the original buying decision');
     expect(buyingValue).toHaveTextContent('120 MW');
     expect(fetch).toHaveBeenCalledTimes(count);
   });
 
   it('keeps arrow navigation in the timeline and reveals details on explicit activation', async () => {
-    await open('Forecast evolution');
+    await open('Check forecast updates');
     const details = await screen.findByRole('region', { name: 'Selected publication details' });
     const scroll = vi.fn();
     details.scrollIntoView = scroll;
@@ -275,7 +290,7 @@ describe('Forecast evolution', () => {
   });
 
   it('maps the final January buying day to February delivery and respects the target-hour boundary', async () => {
-    await open('Forecast evolution');
+    await open('Check forecast updates');
     await screen.findByRole('region', { name: 'Forecast evolution results' });
     expect(screen.getByRole('button', { name: 'Previous target hour' })).toBeDisabled();
     fireEvent.input(screen.getByLabelText('Delivery day'), { target: { value: '2026-02-01' } });
@@ -296,7 +311,7 @@ describe('Forecast evolution', () => {
     value.publications = [];
     value.comparison = { ...emptyDecision().hours[0], target_time: value.comparison.target_time };
     await open(
-      'Forecast evolution',
+      'Check forecast updates',
       api({ '/api/v1/evolution?target_time=2026-01-02T00%3A00%3A00Z': value }),
     );
     expect(
@@ -314,7 +329,7 @@ describe('Forecast evolution', () => {
     const value = evolution();
     value.publications[2].available_at_cutoff = true;
     const fetch = api({ '/api/v1/evolution?target_time=2026-01-02T00%3A00%3A00Z': value });
-    await open('Forecast evolution', fetch);
+    await open('Check forecast updates', fetch);
     expect(await screen.findByRole('alert')).toHaveTextContent('unexpected forecast history data');
     fetch.mockImplementation(api());
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
@@ -330,7 +345,7 @@ describe('Analysis integrity and edge cases', () => {
     range.overall.meta = { ...range.overall.meta, snapshot_id: 'b'.repeat(64) };
     range.daily.meta = range.overall.meta;
     await open(
-      'Accuracy & risk',
+      'Review a buying period',
       api({
         '/api/v1/accuracy?from=2026-01-01&to=2026-01-31': range.overall,
         '/api/v1/accuracy/daily?from=2026-01-01&to=2026-01-31': range.daily,
@@ -354,7 +369,7 @@ describe('Analysis integrity and edge cases', () => {
       absolute_error_mw: 0,
     };
     await open(
-      'Forecast evolution',
+      'Check forecast updates',
       api({ '/api/v1/evolution?target_time=2026-01-02T00%3A00%3A00Z': value }),
     );
     await screen.findByRole('region', { name: 'Forecast evolution results' });
@@ -379,7 +394,7 @@ describe('Analysis integrity and edge cases', () => {
       missing_reasons: ['no_eligible_forecast'],
     };
     await open(
-      'Forecast evolution',
+      'Check forecast updates',
       api({ '/api/v1/evolution?target_time=2026-01-02T00%3A00%3A00Z': value }),
     );
     const inspector = await screen.findByRole('region', { name: 'Selected publication details' });
@@ -404,7 +419,7 @@ describe('Analysis integrity and edge cases', () => {
           })
         : api()(path, options),
     );
-    await open('Forecast evolution', fetch);
+    await open('Check forecast updates', fetch);
     await screen.findByText('Loading publications for this delivery hour…');
     fireEvent.click(screen.getByRole('button', { name: 'Next target hour' }));
     await screen.findByRole('region', { name: 'Forecast evolution results' });
@@ -420,17 +435,20 @@ describe('Analysis integrity and edge cases', () => {
   it('keeps low forecasts and negative differences visible without reversing their meaning', async () => {
     const range = accuracyRange('2026-01-01', '2026-01-31', 100);
     await open(
-      'Accuracy & risk',
+      'Review a buying period',
       api({
         '/api/v1/accuracy?from=2026-01-01&to=2026-01-31': range.overall,
         '/api/v1/accuracy/daily?from=2026-01-01&to=2026-01-31': range.daily,
       }),
     );
     expect(await screen.findByText('Forecast lower on average')).toBeVisible();
+    expect(accuracy()).toHaveTextContent(
+      'overestimate how much electricity you needed from other sources',
+    );
     expect(
       within(
         screen.getByRole('table', { name: 'Largest hourly forecast differences' }),
-      ).getAllByText('-10 MW'),
+      ).getAllByText('10 MW more wind'),
     ).toHaveLength(10);
     expect(
       screen

@@ -368,6 +368,26 @@ describe('setup and metadata states', () => {
 });
 
 describe('buyer overview', () => {
+  it.each([
+    ['2026-01-02', '01 Jan 2026', '02 Jan, 00:00–02 Jan, 10:00 UTC'],
+    ['2026-01-04', '1 to 3 January 2026', '02 Jan, 00:00–04 Jan, 10:00 UTC'],
+    ['2026-01-31', '1 to 30 January 2026', '02 Jan, 00:00–31 Jan, 10:00 UTC'],
+  ])(
+    'distinguishes earlier buying days from delivery hours as of %s',
+    async (date, days, window) => {
+      vi.stubGlobal('fetch', api());
+      render(<App />);
+      fireEvent.change(await screen.findByLabelText('Buying decision date'), {
+        target: { value: date },
+      });
+      const context = await screen.findByRole('region', { name: 'Historical reliability' });
+      expect(await within(context).findByText(days)).toBeVisible();
+      expect(context).toHaveTextContent('Buying days reviewed');
+      expect(context).toHaveTextContent(`Generation compared: ${window}`);
+      expect(context).toHaveTextContent('Buying happens one day before delivery');
+    },
+  );
+
   it('answers the forecast and historical-gap questions without opening a separate view', async () => {
     const fetch = api();
     vi.stubGlobal('fetch', fetch);
@@ -397,6 +417,10 @@ describe('buyer overview', () => {
     expect(within(contextAfterChange).getByText('10 MW')).toBeVisible();
     expect(contextAfterChange).toHaveTextContent('Evidence available by 14 Jan, 10:15 UTC');
     expect(contextAfterChange).toHaveTextContent('both actual readings published by this deadline');
+    expect(contextAfterChange).toHaveTextContent(
+      'Earlier wind overestimates could leave other supply needs underestimated.',
+    );
+    expect(contextAfterChange).toHaveTextContent('not an amount to add to tomorrow’s purchase');
     expect(fetch.mock.calls.filter(([path]) => path.endsWith('/prior-accuracy'))).toHaveLength(2);
     expect(fetch.mock.calls.some(([path]) => path.startsWith('/api/v1/accuracy?'))).toBe(false);
   });
@@ -533,6 +557,36 @@ describe('buyer overview', () => {
       expect(await screen.findByText(direction as string)).toBeVisible();
       const context = screen.getByRole('region', { name: 'Historical reliability' });
       expect(within(context).getByText(gap as string)).toBeVisible();
+      if (forecast === 100) {
+        expect(context).toHaveTextContent(
+          'Earlier wind underestimates could leave other supply needs overestimated.',
+        );
+      } else {
+        expect(
+          within(context).queryByText(/could leave other supply needs/),
+        ).not.toBeInTheDocument();
+      }
+    },
+  );
+
+  it.each([
+    [120, 'underestimate'],
+    [100, 'overestimate'],
+  ])(
+    'connects the hourly wind surprise to other supply needs for forecast %s',
+    async (forecast, implication) => {
+      vi.stubGlobal(
+        'fetch',
+        api({ '/api/v1/decisions/2026-01-01': decision('2026-01-01', forecast as number) }),
+      );
+      render(<App />);
+      const forecastPanel = await screen.findByRole('region', { name: 'Buying-time forecast' });
+      expect(forecastPanel).toHaveTextContent('Expected GB wind power');
+      expect(forecastPanel).toHaveTextContent('more demand must be covered by other supplies');
+      fireEvent.click(screen.getByRole('button', { name: 'Compare with actual generation' }));
+      expect(screen.getByRole('region', { name: 'Selected hour details' })).toHaveTextContent(
+        `could have led you to ${implication} how much electricity you needed from other sources`,
+      );
     },
   );
 

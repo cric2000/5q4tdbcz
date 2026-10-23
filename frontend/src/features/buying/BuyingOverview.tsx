@@ -165,6 +165,9 @@ function ReplayWorkspace({
                 Assumed deadline · N2EX source
                 <ArrowUpRight className="size-3" aria-hidden="true" />
               </a>
+              <p className="mt-1 text-[11px] text-neutral-500">
+                Times use UTC = UK time (GMT) in this pilot.
+              </p>
             </div>
           </div>
         </div>

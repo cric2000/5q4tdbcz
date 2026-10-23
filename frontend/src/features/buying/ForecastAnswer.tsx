@@ -24,6 +24,7 @@ export function ForecastAnswer({
       aria-label="Buying-time forecast"
     >
       <div>
+        <p className="mb-2 text-xs font-medium text-primary">Expected GB wind power</p>
         <p className="text-xs text-muted-foreground">
           {hourLabel(hour.target_time)}–{String((selected + 1) % 24).padStart(2, '0')}:00 UTC
         </p>
@@ -38,9 +39,16 @@ export function ForecastAnswer({
           Published {timestampLabel(hour.forecast_published_at)}
           {hour.forecast_published_at ? ' UTC' : ''}
         </p>
+        {hour.forecast_mw !== null && (
+          <p className="mt-2 max-w-md text-xs leading-relaxed text-muted-foreground">
+            This is the latest wind estimate you could use for this delivery hour. Less wind means
+            more demand must be covered by other supplies.
+          </p>
+        )}
         {hour.forecast_mw === null && (
           <p className="mt-1 text-xs text-amber-800">
-            No eligible forecast is available for this hour.
+            No forecast was stored at or before the deadline for this hour. There is no wind
+            estimate to use from this snapshot; missing does not mean zero wind.
           </p>
         )}
       </div>

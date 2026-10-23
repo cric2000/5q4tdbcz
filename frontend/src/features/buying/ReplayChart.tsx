@@ -207,6 +207,11 @@ export default function ReplayChart({
         <figcaption className="mt-2 flex flex-wrap justify-between gap-2 px-3 pb-5 text-[10px] leading-relaxed text-neutral-500">
           <span>Delivery hour · UTC / GMT</span>
           <span>
+            {showActuals
+              ? 'Blue below green: less wind than forecast. Blue above green: more wind.'
+              : 'Lower points mean less expected wind, leaving more demand for other supplies.'}
+          </span>
+          <span>
             Choose a point or use the hour controls above. Arrow keys move between points.
           </span>
         </figcaption>
@@ -219,8 +224,9 @@ export default function ReplayChart({
             </AccordionTrigger>
             <AccordionContent>
               <p className="mb-4 text-xs leading-relaxed text-neutral-500">
-                Bars above zero mean the forecast was too high. Bars below zero mean it was too low.
-                Taller bars mean a larger difference. Missing comparisons have no bar.
+                Above zero: less wind than forecast, so more demand could need other supplies. Below
+                zero: more wind than forecast, so other supply needs could have been overestimated.
+                Taller bars mean a larger miss. Missing comparisons have no bar.
               </p>
               <div className="mb-3 flex flex-wrap justify-between gap-2 text-[11px] text-neutral-500">
                 <h3>Forecast minus actual power</h3>

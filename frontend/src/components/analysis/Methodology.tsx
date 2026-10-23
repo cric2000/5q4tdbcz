@@ -6,7 +6,7 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion';
 import { Button } from '@/components/ui/button';
-import { number, timestampLabel } from '@/lib/format';
+import { dateLabel, hourLabel, number } from '@/lib/format';
 import { ArrowUpRight } from 'lucide-react';
 
 export function Methodology({ metadata }: { metadata: Metadata }) {
@@ -39,7 +39,9 @@ export function Methodology({ metadata }: { metadata: Metadata }) {
             <p className="text-xs">
               {number(metadata.snapshot.forecast_records, 0)} forecast versions ·{' '}
               {number(metadata.snapshot.outturn_half_hours, 0)} actual half-hours · Retrieved{' '}
-              {timestampLabel(metadata.snapshot.retrieved_at)} UTC
+              {dateLabel(metadata.snapshot.retrieved_at.slice(0, 10))},{' '}
+              {hourLabel(metadata.snapshot.retrieved_at)} UTC. This is a prepared historical
+              dataset, not a live feed.
             </p>
           </AccordionContent>
         </AccordionItem>

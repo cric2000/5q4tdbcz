@@ -9,7 +9,7 @@ export function ProductGuide() {
   return (
     <section id="how-it-works" className="mt-8 scroll-mt-6">
       <div className="mb-4 flex items-center gap-2">
-        <h2 className="text-base font-semibold">A little context goes a long way.</h2>
+        <h2 className="text-base font-semibold">Help with WindSight</h2>
       </div>
       <Accordion type="multiple" className="rounded-lg border bg-white px-5 sm:px-6">
         <AccordionItem value="help">
@@ -18,11 +18,11 @@ export function ProductGuide() {
           </AccordionTrigger>
           <AccordionContent className="max-w-3xl text-sm leading-[1.85] text-muted-foreground">
             Your team needs a wind estimate before deciding what other electricity to buy. WindSight
-            shows the latest forecast available at the decision deadline, then measures its
-            historical difference from reported generation. Use that evidence to assess the wind
-            assumption in your plan. Customer demand, existing contracts and the renewable supply
-            available to your utility are also needed to calculate a purchase quantity. This pilot
-            replays January 2026; it does not supply live trading instructions.
+            shows the latest next-day forecast available at the decision deadline alongside earlier
+            accuracy evidence known by then. Too much expected wind could leave other supply needs
+            underestimated; too little could overstate them. Customer demand, existing contracts and
+            the renewable supply available to your utility are also needed to calculate a purchase
+            quantity. This pilot replays January 2026; it does not supply live trading instructions.
           </AccordionContent>
         </AccordionItem>
         <AccordionItem value="terms">
@@ -34,8 +34,8 @@ export function ProductGuide() {
               <div>
                 <dt className="font-semibold">Forecast</dt>
                 <dd className="mt-1 text-muted-foreground">
-                  The wind power expected for a delivery hour, using a version published before the
-                  buying deadline.
+                  GB national wind power expected for a delivery hour, using the latest version
+                  published at or before the buying deadline. This is not your utility’s own supply.
                 </dd>
               </div>
               <div>

@@ -5,7 +5,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { DailyTrend, ErrorDistribution } from '@/features/accuracy/AccuracyCharts';
+import { dateRangeLabel } from '@/lib/dates';
 import { dateLabel, number, power, signed, timestampLabel } from '@/lib/format';
+import { averageGapNote, supplyImplication } from '@/lib/interpretation';
 import { ArrowUpRight, Info } from 'lucide-react';
 
 export function AccuracyResults({
@@ -24,11 +26,13 @@ export function AccuracyResults({
     <div className="space-y-5" aria-label="Accuracy results" role="region">
       <div className="flex flex-wrap items-center justify-between gap-3 text-xs leading-relaxed">
         <p role="status">
-          Analysis for{' '}
-          <strong>
-            {dateLabel(overall.decision_date_from)}–{dateLabel(overall.decision_date_to)}
-          </strong>{' '}
-          · Buying days
+          Buying days reviewed:{' '}
+          <strong>{dateRangeLabel(overall.decision_date_from, overall.decision_date_to)}</strong>
+          <span className="mt-1 block text-muted-foreground">
+            Delivery days:{' '}
+            {dateRangeLabel(daily.days[0].delivery_date, daily.days.at(-1)!.delivery_date)} ·
+            next-day generation
+          </span>
         </p>
         <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary">
           {number(coverage.matched_hours, 0)} / {number(coverage.expected_hours, 0)} hours compared
@@ -55,28 +59,34 @@ export function AccuracyResults({
       >
         <div>
           <p className="text-[10px] font-semibold tracking-[.14em] text-primary">
-            READ THE HISTORY IN THREE PARTS
+            WHAT THIS PERIOD TELLS YOU
           </p>
           <h3 className="mt-2 text-lg font-semibold leading-snug">
-            Size. Direction. Larger misses.
+            {bias === null
+              ? 'Not enough evidence to assess the wind assumption'
+              : bias > 0
+                ? 'Less wind than forecast on average'
+                : bias < 0
+                  ? 'More wind than forecast on average'
+                  : metrics.mae_mw === 0
+                    ? 'Wind matched the forecasts'
+                    : 'Average direction hides hourly misses'}
           </h3>
         </div>
         <div className="text-sm leading-relaxed text-muted-foreground">
           <p className="font-medium text-foreground">
-            {bias === null
-              ? 'There is not enough complete data to assess this period.'
-              : bias > 0
-                ? 'Forecasts tended to assume more wind than was later reported.'
-                : bias < 0
-                  ? 'Forecasts tended to assume less wind than was later reported.'
-                  : 'High and low differences balanced on average; individual misses may still be large.'}
+            {supplyImplication(bias) ??
+              (bias === null
+                ? 'There is not enough complete data to assess this period.'
+                : metrics.mae_mw === 0
+                  ? 'No wind forecast gap was observed in the compared hours. Purchase planning still needs demand and existing supply.'
+                  : 'High and low differences balanced on average; individual hours could still leave more or less demand to cover from other sources.')}
           </p>
           <p className="mt-2">
-            This is a retrospective review of the selected period, including outcomes after earlier
-            buying decisions. The buying overview separately limits accuracy to evidence available
-            at its selected deadline. Use the figures below to review the wind assumption. Then
-            inspect the largest gaps to see the forecast available at the time. These national
-            series alone do not determine your purchase volume.
+            Known after delivery: this review includes later outcomes across the selected period. To
+            see only evidence available at a particular buying deadline, return to the buying
+            overview. These national figures describe past misses; they do not calculate your
+            purchase quantity or predict tomorrow’s error.
           </p>
         </div>
       </div>
@@ -97,10 +107,11 @@ export function AccuracyResults({
         >
           Bias keeps the direction of each difference. High and low differences can cancel out, even
           when individual misses are large.
+          {averageGapNote(metrics) && <span className="mt-2 block">{averageGapNote(metrics)}</span>}
         </Statistic>
         <Statistic title="Larger observed gaps (P90)" value={power(metrics.p90_absolute_error_mw)}>
-          The 90th percentile of past hourly gap sizes, using interpolation. Helps you see larger
-          historical misses; it is not a promise about tomorrow.
+          About 9 in 10 past hourly gaps were this size or smaller. Calculated as the interpolated
+          90th percentile. This shows larger past misses, not a guaranteed range for tomorrow.
         </Statistic>
       </div>
       <Card className="gap-0 py-0 shadow-none">
@@ -154,8 +165,8 @@ export function AccuracyResults({
           <CardHeader className="xl:min-h-28">
             <h3 className="text-lg font-semibold">When were the forecasts further off?</h3>
             <p className="text-xs leading-relaxed text-muted-foreground">
-              Compare daily average gaps. Use the daily readings below to check coverage before
-              comparing days.
+              Higher points mean less accurate next-day wind assumptions. Dates are buying days;
+              each point scores the following day’s delivery. Check coverage in the daily readings.
             </p>
           </CardHeader>
           <CardContent className="pt-3">
@@ -166,8 +177,8 @@ export function AccuracyResults({
           <CardHeader className="xl:min-h-28">
             <h3 className="text-lg font-semibold">How were the hourly differences spread?</h3>
             <p className="text-xs leading-relaxed text-muted-foreground">
-              Taller bars mean more hours in that interval. Zero means forecast and actual power
-              matched.
+              Taller bars mean more hours with that size of miss. Positive means less wind than
+              forecast; negative means more wind. Zero means forecast and actual power matched.
             </p>
           </CardHeader>
           <CardContent className="pt-3">
@@ -179,8 +190,9 @@ export function AccuracyResults({
         <CardHeader>
           <h3 className="text-lg font-semibold">Hours worth a closer look</h3>
           <p className="text-xs leading-relaxed text-muted-foreground">
-            The ten largest gaps in this range, ranked by size. Open a publication history to see
-            what was available before the buying decision.
+            The ten largest wind surprises, ranked by size. Less wind could leave more demand to
+            cover from other sources; more wind could mean other supply needs were overestimated.
+            See history to check the forecast available at the original deadline.
           </p>
         </CardHeader>
         <CardContent>
@@ -188,7 +200,7 @@ export function AccuracyResults({
             <p className="text-sm text-muted-foreground">No matched hours to rank.</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[650px] text-left text-xs">
+              <table className="w-full min-w-[650px] text-center text-xs [&_th]:text-center">
                 <caption className="sr-only">Largest hourly forecast differences</caption>
                 <thead className="border-b text-muted-foreground">
                   <tr>
@@ -196,13 +208,10 @@ export function AccuracyResults({
                       'Delivery hour · UTC',
                       'Forecast',
                       'Actual',
-                      'Forecast − actual',
+                      'Wind vs forecast',
                       'Investigate',
-                    ].map((heading, index) => (
-                      <th
-                        key={heading}
-                        className={`px-3 py-3 font-medium ${index > 0 && index < 4 ? 'text-right' : ''}`}
-                      >
+                    ].map((heading) => (
+                      <th key={heading} className="px-3 py-3 font-medium">
                         {heading}
                       </th>
                     ))}
@@ -214,12 +223,14 @@ export function AccuracyResults({
                       <th scope="row" className="px-3 py-3 font-medium">
                         {timestampLabel(hour.target_time)}
                       </th>
-                      <td className="px-3 py-3 text-right tabular-nums">
-                        {power(hour.forecast_mw)}
-                      </td>
-                      <td className="px-3 py-3 text-right tabular-nums">{power(hour.actual_mw)}</td>
-                      <td className="px-3 py-3 text-right tabular-nums">
-                        {signed(hour.error_mw)} MW
+                      <td className="px-3 py-3 tabular-nums">{power(hour.forecast_mw)}</td>
+                      <td className="px-3 py-3 tabular-nums">{power(hour.actual_mw)}</td>
+                      <td className="px-3 py-3 tabular-nums">
+                        {hour.error_mw === null
+                          ? 'Unavailable'
+                          : hour.error_mw === 0
+                            ? 'Matched'
+                            : `${power(Math.abs(hour.error_mw))} ${hour.error_mw > 0 ? 'less wind' : 'more wind'}`}
                       </td>
                       <td className="px-3 py-3">
                         <Button
@@ -241,8 +252,13 @@ export function AccuracyResults({
         </CardContent>
       </Card>
       <EvidencePanel title="Daily readings and coverage">
+        <p className="mb-4 text-xs leading-relaxed text-muted-foreground">
+          Each buying day is paired with next-day delivery. Positive bias means wind was below
+          forecast on average; negative means above it. MAE measures miss size and P90 shows larger
+          past misses. Only compared hours contribute to the figures.
+        </p>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[660px] text-left text-xs">
+          <table className="w-full min-w-[660px] text-center text-xs [&_th]:text-center">
             <caption className="sr-only">Daily accuracy readings</caption>
             <thead className="border-b text-muted-foreground">
               <tr>
@@ -253,11 +269,8 @@ export function AccuracyResults({
                   'Average gap · MW',
                   'Bias · MW',
                   'P90 gap · MW',
-                ].map((label, index) => (
-                  <th
-                    key={label}
-                    className={`px-3 py-3 font-medium ${index >= 2 ? 'text-right' : ''}`}
-                  >
+                ].map((label) => (
+                  <th key={label} className="px-3 py-3 font-medium">
                     {label}
                   </th>
                 ))}
@@ -270,16 +283,12 @@ export function AccuracyResults({
                     {dateLabel(day.decision_date)}
                   </th>
                   <td className="px-3 py-3">{dateLabel(day.delivery_date)}</td>
-                  <td className="px-3 py-3 text-right tabular-nums">
+                  <td className="px-3 py-3 tabular-nums">
                     {day.metrics.coverage.matched_hours} / 24
                   </td>
-                  <td className="px-3 py-3 text-right tabular-nums">
-                    {number(day.metrics.mae_mw)}
-                  </td>
-                  <td className="px-3 py-3 text-right tabular-nums">
-                    {signed(day.metrics.bias_mw)}
-                  </td>
-                  <td className="px-3 py-3 text-right tabular-nums">
+                  <td className="px-3 py-3 tabular-nums">{number(day.metrics.mae_mw)}</td>
+                  <td className="px-3 py-3 tabular-nums">{signed(day.metrics.bias_mw)}</td>
+                  <td className="px-3 py-3 tabular-nums">
                     {number(day.metrics.p90_absolute_error_mw)}
                   </td>
                 </tr>
@@ -315,7 +324,7 @@ export function AccuracyResults({
           upper bound is included.
         </p>
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[420px] text-left text-xs">
+          <table className="w-full min-w-[420px] text-center text-xs [&_th]:text-center">
             <caption className="sr-only">Signed error distribution intervals</caption>
             <thead className="border-b">
               <tr>

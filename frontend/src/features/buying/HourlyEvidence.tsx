@@ -23,9 +23,10 @@ export function Evidence({
         id="table-help"
         className="mt-2 mb-4 max-w-3xl text-xs leading-relaxed text-muted-foreground"
       >
-        Hourly actual power is the average of the first and second half-hour readings. Positive
-        difference means the forecast was high; negative means low. A dash means unavailable. All
-        times are UTC.
+        Trace each comparison from the forecast available at the deadline to the two actual
+        half-hour readings, which we average. Positive difference means less wind than forecast;
+        negative means more wind. Select an hour to bring its explanation into view above. A dash
+        means unavailable, not zero. All times are UTC.
       </p>
       <div
         className="overflow-x-auto rounded-sm border"
@@ -33,7 +34,10 @@ export function Evidence({
         aria-label="Hourly evidence table, scroll horizontally for all columns"
         tabIndex={0}
       >
-        <table className="w-full text-right text-xs tabular-nums" aria-describedby="table-help">
+        <table
+          className="w-full text-center text-xs tabular-nums [&_th]:text-center"
+          aria-describedby="table-help"
+        >
           <caption className="sr-only">
             Forecast selection and actual readings for {dateLabel(decision.delivery_date)} delivery,
             using {timestampLabel(decision.cutoff)} UTC cutoff.
@@ -49,12 +53,8 @@ export function Evidence({
                 'Hourly actual MW',
                 'Forecast − actual MW',
                 'Data status',
-              ].map((label, index) => (
-                <th
-                  key={label}
-                  scope="col"
-                  className={`px-3 py-3 font-medium whitespace-nowrap ${index === 0 || index === 7 ? 'text-left' : ''}`}
-                >
+              ].map((label) => (
+                <th key={label} scope="col" className="px-3 py-3 font-medium whitespace-nowrap">
                   {label}
                 </th>
               ))}
@@ -66,7 +66,7 @@ export function Evidence({
                 key={row.target_time}
                 className={`border-b last:border-0 ${selected === index ? 'bg-green-50/70' : 'even:bg-neutral-50/40'}`}
               >
-                <th scope="row" className="px-2 py-2 text-left">
+                <th scope="row" className="px-2 py-2">
                   <Button
                     variant="ghost"
                     size="sm"
@@ -90,7 +90,7 @@ export function Evidence({
                 >
                   {signed(row.error_mw)}
                 </td>
-                <td className="min-w-28 px-3 py-3 text-left">
+                <td className="min-w-28 px-3 py-3">
                   {row.status === 'matched' ? (
                     <Badge
                       variant="outline"

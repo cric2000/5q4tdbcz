@@ -189,9 +189,9 @@ export function ErrorDistribution({ bins }: { bins: HistogramBin[] }) {
           ))}
       </svg>
       <figcaption className="flex flex-wrap justify-between gap-2 text-xs leading-relaxed text-muted-foreground">
-        <span>− Forecast too low</span>
+        <span>− More wind than forecast</span>
         <span>Difference · MW</span>
-        <span>+ Forecast too high</span>
+        <span>+ Less wind than forecast</span>
       </figcaption>
     </figure>
   );

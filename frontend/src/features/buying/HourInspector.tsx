@@ -2,6 +2,7 @@ import { reasonText } from './labels';
 import type { Decision } from '@/api';
 import { Button } from '@/components/ui/button';
 import { hourLabel, power, signed, timestampLabel } from '@/lib/format';
+import { supplyImplication } from '@/lib/interpretation';
 import { ArrowDownRight, ArrowUpRight, Check, ChevronLeft, ChevronRight, Info } from 'lucide-react';
 import type { RefObject } from 'react';
 
@@ -118,6 +119,11 @@ export function HourInspector({
               ? 'Both forecast and actual power are needed to compare this hour.'
               : `Forecast − actual = ${signed(hour.error_mw)} MW`}
           </p>
+          {supplyImplication(hour.error_mw) && (
+            <p className="mt-2 text-xs leading-relaxed text-foreground">
+              {supplyImplication(hour.error_mw)}
+            </p>
+          )}
         </div>
       </div>
       <p className="mt-2 text-xs leading-relaxed text-neutral-500">

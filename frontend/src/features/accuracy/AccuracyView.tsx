@@ -100,6 +100,12 @@ export function AccuracyView({
           {error ||
             `Select buying days, not delivery days. Each uses the latest forecast published by ${metadata.decision_cutoff_gmt} GMT for next-day delivery. This is an assumed deadline; the client’s deadline is to be confirmed.`}
         </p>
+        {`${from}|${to}` !== range && !error && (
+          <p role="status" className="text-xs font-medium text-primary">
+            Dates changed. Select Update analysis to apply them; the results below still show the
+            previous range.
+          </p>
+        )}
       </Card>
       {resource.state === 'loading' && (
         <LoadingPanel message="Comparing the selected buying days…" />

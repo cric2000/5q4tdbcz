@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { PublicationTimeline } from '@/features/evolution/PublicationTimeline';
 import { dateLabel, hourLabel, number, power, signed, timestampLabel } from '@/lib/format';
+import { supplyImplication } from '@/lib/interpretation';
 import { revealDetails } from '@/lib/selection';
 import { ChevronLeft, ChevronRight, Info } from 'lucide-react';
 import { useRef, useState } from 'react';
@@ -58,8 +59,16 @@ export function EvolutionResults({ evolution }: { evolution: Evolution }) {
           decision was made.
         </Statistic>
         <Statistic
-          title="Forecast minus actual"
-          value={comparison.error_mw === null ? 'Unavailable' : `${signed(comparison.error_mw)} MW`}
+          title={
+            comparison.error_mw === null || comparison.error_mw === 0
+              ? 'Wind vs forecast'
+              : comparison.error_mw > 0
+                ? 'Less wind than forecast'
+                : 'More wind than forecast'
+          }
+          value={
+            comparison.error_mw === null ? 'Unavailable' : power(Math.abs(comparison.error_mw))
+          }
         >
           {comparison.error_mw === null
             ? 'Both a forecast and complete actual readings are needed.'
@@ -68,6 +77,13 @@ export function EvolutionResults({ evolution }: { evolution: Evolution }) {
               : `Reported wind power was ${power(Math.abs(comparison.error_mw))} ${comparison.error_mw > 0 ? 'lower' : 'higher'} than forecast.`}
         </Statistic>
       </div>
+      {supplyImplication(comparison.error_mw) && (
+        <p className="rounded-md border border-primary/15 bg-primary/5 p-4 text-sm leading-relaxed">
+          <strong>What this meant for buying: </strong>
+          {supplyImplication(comparison.error_mw)} Your actual purchase requirement also depends on
+          demand and existing supply.
+        </p>
+      )}
       <Card className="min-w-0 gap-4 shadow-none">
         <CardHeader>
           <h3 className="text-lg font-semibold">How the published forecast changed</h3>
@@ -145,13 +161,16 @@ export function EvolutionResults({ evolution }: { evolution: Evolution }) {
                   {row.selected_as_of
                     ? 'Used for the buying decision'
                     : row.available_at_cutoff
-                      ? 'Available before the deadline'
+                      ? 'Available · superseded by a newer forecast'
                       : 'After the deadline · excluded'}
                 </Badge>
               </div>
               {!row.selected_as_of && chosenIndex >= 0 && (
                 <p className="mt-3 text-xs font-medium text-foreground">
-                  This is an update you are exploring. The buying-time forecast above stays fixed.
+                  {row.available_at_cutoff
+                    ? `A newer forecast was available by the deadline, so the buying decision uses ${power(comparison.forecast_mw)} instead.`
+                    : 'This publication arrived too late to use for the original buying decision.'}{' '}
+                  The buying-time forecast above stays fixed.
                 </p>
               )}
               <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
@@ -171,16 +190,13 @@ export function EvolutionResults({ evolution }: { evolution: Evolution }) {
           change the forecast used for the buying decision.
         </p>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[570px] text-left text-xs">
+          <table className="w-full min-w-[570px] text-center text-xs [&_th]:text-center">
             <caption className="sr-only">Forecast publication history</caption>
             <thead className="border-b text-muted-foreground">
               <tr>
                 {['Publication · UTC', 'Forecast · MW', 'Available by deadline?', 'Details'].map(
-                  (label, index) => (
-                    <th
-                      key={label}
-                      className={`px-3 py-3 font-medium ${index === 1 ? 'text-right' : ''}`}
-                    >
+                  (label) => (
+                    <th key={label} className="px-3 py-3 font-medium">
                       {label}
                     </th>
                   ),
@@ -199,11 +215,13 @@ export function EvolutionResults({ evolution }: { evolution: Evolution }) {
                       <span className="mt-1 block text-primary">Used for buying decision</span>
                     )}
                   </th>
-                  <td className="px-3 py-3 text-right tabular-nums">
-                    {number(publication.generation_mw)}
-                  </td>
+                  <td className="px-3 py-3 tabular-nums">{number(publication.generation_mw)}</td>
                   <td className="px-3 py-3">
-                    {publication.available_at_cutoff ? 'Yes' : 'No · later'}
+                    {publication.selected_as_of
+                      ? 'Yes · latest available'
+                      : publication.available_at_cutoff
+                        ? 'Yes · superseded'
+                        : 'No · too late to use'}
                   </td>
                   <td className="px-3 py-3">
                     <Button
