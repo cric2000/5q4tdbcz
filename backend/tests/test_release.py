@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import sqlite3
+from contextlib import closing
 from datetime import timedelta
 from pathlib import Path
 
@@ -55,7 +56,7 @@ def complete_snapshot(tmp_path):
 
 
 def change_quality(path, mutate):
-    with sqlite3.connect(path) as database:
+    with closing(sqlite3.connect(path)) as database, database:
         quality = json.loads(database.execute("SELECT value FROM metadata").fetchone()[0])
         mutate(quality)
         database.execute(
@@ -76,7 +77,7 @@ def test_release_copy_preserves_source_identity_and_is_read_only(complete_snapsh
 
 
 def test_tampered_generation_is_rejected_even_when_counts_and_coverage_match(complete_snapshot):
-    with sqlite3.connect(complete_snapshot) as database:
+    with closing(sqlite3.connect(complete_snapshot)) as database, database:
         database.execute("UPDATE forecasts SET generation_mw=101")
     with pytest.raises(IngestionError, match="fingerprint"):
         validate_snapshot(complete_snapshot)

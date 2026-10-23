@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from contextlib import closing
 from datetime import date, timedelta
 
 import httpx
@@ -147,7 +148,7 @@ def test_snapshot_rebuild_has_stable_content_identity_and_row_counts(tmp_path):
     )
     assert first["content_sha256"] == second["content_sha256"]
     assert read_quality_report(path) == second
-    with sqlite3.connect(path) as database:
+    with closing(sqlite3.connect(path)) as database, database:
         assert database.execute("SELECT COUNT(*) FROM forecasts").fetchone()[0] == 72
         assert database.execute("SELECT COUNT(*) FROM outturn").fetchone()[0] == 48
         assert database.execute("SELECT COUNT(*) FROM source_requests").fetchone()[0] == 7

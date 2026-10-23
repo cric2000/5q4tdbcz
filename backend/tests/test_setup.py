@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from contextlib import closing
 
 import pytest
 from fastapi.testclient import TestClient
@@ -31,7 +32,7 @@ def test_health_reports_liveness_without_claiming_data_is_ready(tmp_path):
 )
 def test_health_reads_snapshot_status_without_running_ingestion(tmp_path, complete, status):
     path = tmp_path / "snapshot.sqlite3"
-    with sqlite3.connect(path) as database:
+    with closing(sqlite3.connect(path)) as database, database:
         database.execute("PRAGMA user_version=1")
         database.execute("CREATE TABLE metadata (key TEXT, value TEXT)")
         database.execute(

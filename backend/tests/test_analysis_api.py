@@ -3,6 +3,7 @@ import json
 import math
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from datetime import UTC, datetime
 
 import pytest
@@ -239,7 +240,7 @@ def test_endpoints_are_read_only_and_expose_typed_openapi_contracts(client, anal
                 "schema"
             ]
         )
-    with sqlite3.connect(analytics_snapshot) as database:
+    with closing(sqlite3.connect(analytics_snapshot)) as database, database:
         assert database.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
 
@@ -266,7 +267,7 @@ def test_unrelated_programming_error_is_not_mislabeled_as_an_invalid_snapshot(an
 def test_corrupt_snapshot_metadata_or_records_fail_with_structured_503(
     analytics_snapshot, corruption
 ):
-    with sqlite3.connect(analytics_snapshot) as database:
+    with closing(sqlite3.connect(analytics_snapshot)) as database, database:
         if corruption == "source_value":
             database.execute("UPDATE forecasts SET generation_mw='not-MW'")
         else:
