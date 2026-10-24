@@ -2,7 +2,7 @@
 
 A historical pilot for a UK electricity buyer: see the wind forecast available before a day-ahead buying decision and quantify earlier forecast errors. Built with React, TypeScript, shadcn/ui, Tailwind CSS and Python/FastAPI.
 
-[Live demo](https://windsight-five.vercel.app) · [Hosted API docs](https://windsight-five.vercel.app/docs)
+[Live demo](https://windsight-five.vercel.app) · [Hosted API docs](https://windsight-five.vercel.app/docs) · [Youtube Video](https://www.youtube.com/watch?v=5EDnn0NOavo)
 
 ## Try the buying overview
 
